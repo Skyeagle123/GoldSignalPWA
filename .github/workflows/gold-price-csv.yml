@@ -1,12 +1,16 @@
-name: Gold price CSV (daily)
+name: Gold price CSV (hourly)
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:          # تشغيل يدوي
   schedule:
-    - cron: '0 15 * * *'   # يوميًا 18:00 بيروت (15:00 UTC)
+    - cron: '0 * * * *'       # كل ساعة عند الدقيقة 00 (UTC)
 
 permissions:
   contents: write
+
+concurrency:
+  group: gold-csv
+  cancel-in-progress: true
 
 jobs:
   update:
@@ -14,41 +18,59 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Update CSV from Stooq (XAUUSD)
+      - name: Fetch price and update CSVs
         shell: bash
         run: |
           set -euo pipefail
-          OUT="XAUUSD_live.csv"
-          [ -f "$OUT" ] || echo "Date,Close" > "$OUT"
 
-          # نزّل أحدث بيانات يومية من Stooq
-          curl -sS -L -A "Mozilla/5.0" "https://stooq.com/q/d/l/?s=xauusd&i=d" -o /tmp/stooq.csv
+          OUT_H="XAUUSD_hourly.csv"
+          OUT_D="XAUUSD_live.csv"
+          [ -f "$OUT_H" ] || echo "DatetimeUTC,Price" > "$OUT_H"
+          [ -f "$OUT_D" ] || echo "Date,Close" > "$OUT_D"
 
-          # لو الملف فاضي، اعتبر التشغيل ناجح بدون تغييرات
-          [ -s /tmp/stooq.csv ] || { echo "Stooq download empty"; exit 0; }
-
-          # آخر سطر فعلي (تجاوز الهيدر)
-          LAST=$(tail -n +2 /tmp/stooq.csv | tail -n 1 || true)
-          DATE=$(echo "$LAST" | cut -d, -f1)
-          CLOSE=$(echo "$LAST" | cut -d, -f5)
-
-          # لو ما قدرنا نقرأ قيم، إخرج بنجاح بدون تعديل
-          if [ -z "${DATE:-}" ] || [ -z "${CLOSE:-}" ]; then
-            echo "No parsed values"; exit 0
+          # ----- Hourly price (Yahoo -> fallback Stooq) -----
+          PRICE=""
+          YJSON=$(curl -sS -L -A "Mozilla/5.0" "https://query1.finance.yahoo.com/v7/finance/quote?symbols=GC=F" || true)
+          if [ -n "$YJSON" ]; then
+            PRICE=$(echo "$YJSON" | tr -d '\n' | sed -nE 's/.*"regularMarketPrice":([0-9.]+).*/\1/p' | head -n1 || true)
+          fi
+          if [ -z "$PRICE" ]; then
+            SCSV=$(curl -sS -L -A "Mozilla/5.0" "https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlcv&h&e=csv" || true)
+            PRICE=$(echo "$SCSV" | awk -F, 'NR==2{print $7}' || true)
           fi
 
-          # أضف السطر فقط إذا تاريخ جديد
-          LAST_DATE=$(tail -n 1 "$OUT" | cut -d, -f1 || echo "")
-          if [ "$LAST_DATE" != "$DATE" ]; then
-            echo "$DATE,$CLOSE" >> "$OUT"
+          if [ -n "${PRICE:-}" ]; then
+            DATE_H=$(date -u +'%Y-%m-%dT%H:00:00Z')                # طابع زمني على رأس الساعة (UTC)
+            LAST_H=$(tail -n 1 "$OUT_H" | cut -d, -f1 || echo "")
+            if [ "$LAST_H" != "$DATE_H" ]; then
+              echo "$DATE_H,$PRICE" >> "$OUT_H"
+            fi
+          else
+            echo "No hourly price fetched"
           fi
 
-      - name: Commit CSV (if changed)
+          # ----- Daily close (Stooq daily CSV) -----
+          curl -sS -L -A "Mozilla/5.0" "https://stooq.com/q/d/l/?s=xauusd&i=d" -o /tmp/stooq_daily.csv || true
+          if [ -s /tmp/stooq_daily.csv ]; then
+            LAST=$(tail -n +2 /tmp/stooq_daily.csv | tail -n 1 || true)
+            DDATE=$(echo "$LAST" | cut -d, -f1)
+            DCLOSE=$(echo "$LAST" | cut -d, -f5)
+            LAST_D=$(tail -n 1 "$OUT_D" | cut -d, -f1 || echo "")
+            if [ -n "${DDATE:-}" ] && [ -n "${DCLOSE:-}" ] && [ "$LAST_D" != "$DDATE" ]; then
+              echo "$DDATE,$DCLOSE" >> "$OUT_D"
+            fi
+          fi
+
+      - name: Commit CSVs (if changed)
         shell: bash
         run: |
           set -e
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add XAUUSD_live.csv
-          git commit -m "Update XAUUSD_live.csv" || exit 0
+          git add XAUUSD_hourly.csv XAUUSD_live.csv || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Hourly gold price update"
           git push
