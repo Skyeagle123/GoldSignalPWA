@@ -1,81 +1,60 @@
-name: Gold price CSV (minutely)
+name: Gold price CSV (5min)
 
 on:
-  workflow_dispatch:          # تشغيل يدوي من Actions
+  workflow_dispatch:
   schedule:
-    - cron: '5 * * * *'       # محاولة تشغيل كل ٥ دقائق (UTC)
+    - cron: '*/5 * * * *'   # كل 5 دقايق بالـUTC
 
 permissions:
   contents: write
 
 concurrency:
-  group: gold-csv
+  group: gold-csv-5min
   cancel-in-progress: true
 
 jobs:
   update:
     runs-on: ubuntu-latest
-    env:
-      # إذا عندك Cloudflare Worker حطه هون (اختياري)
-      # مثال: https://goldprice-proxy.<yourname>.workers.dev?s=GC=F
-      WORKER_URL: ''
-      # الرمز: GC=F (عقود ذهب) أو XAUUSD=X (سبوت)
-      Y_SYMBOL: 'GC=F'
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch price (minutely) and update CSV
+      - name: Update 5-min CSV (Date,Close)
         shell: bash
         run: |
           set -euo pipefail
-          OUT_M="XAUUSD_minutely.csv"
-          [ -f "$OUT_M" ] || echo "DatetimeUTC,Price,Source" > "$OUT_M"
+          OUT="XAUUSD_5min.csv"
+          [ -f "$OUT" ] || echo "Date,Close" > "$OUT"
 
-          PRICE=""
-          SRC=""
+          # سطر حي من Stooq (XAUUSD)
+          CSV=$(curl -sS -L -A "Mozilla/5.0" "https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlcv&h&e=csv" || true)
+          LINE=$(printf '%s\n' "$CSV" | sed -n '2p' | tr -d '\r' || true)
+          PRICE=$(printf '%s' "$LINE" | awk -F, '{print $7}')
 
-          # 1) لو في Worker مفعّل
-          if [ -n "${WORKER_URL}" ]; then
-            J=$(curl -sS -L "${WORKER_URL}" || true)
-            PRICE=$(echo "$J" | sed -nE 's/.*"price":\s*([0-9.]+).*/\1/p' | head -n1 || true)
-            if [ -n "${PRICE}" ]; then SRC="worker"; fi
+          # طابع زمني مضبوط على الـtick الحالي (الـrun أصلاً على دقيقة 0/5/10...)
+          TS=$(date -u +'%Y-%m-%dT%H:%M:00Z')
+          LAST_TS=$(tail -n 1 "$OUT" | cut -d, -f1 || echo "")
+
+          # لو ما قدرنا نقرأ رقم، ما منضيف شي (منعيد بعد 5 دق)
+          if ! [[ "$PRICE" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "No price parsed; skip"
+            exit 0
           fi
 
-          # 2) Yahoo JSON
-          if [ -z "${PRICE}" ]; then
-            YJSON=$(curl -sS -L -A "Mozilla/5.0" "https://query1.finance.yahoo.com/v7/finance/quote?symbols=${Y_SYMBOL}" || true)
-            PRICE=$(echo "$YJSON" | tr -d '\n' | sed -nE 's/.*"regularMarketPrice":\s*([0-9.]+).*/\1/p' | head -n1 || true)
-            if [ -n "${PRICE}" ]; then SRC="yahoo"; fi
-          fi
-
-          # 3) fallback: Stooq (آخر سعر Close)
-          if [ -z "${PRICE}" ]; then
-            SCSV=$(curl -sS -L -A "Mozilla/5.0" "https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlcv&h&e=csv" || true)
-            PRICE=$(echo "$SCSV" | awk -F, 'NR==2{print $7}' || true)
-            if [ -n "${PRICE}" ]; then SRC="stooq"; fi
-          fi
-
-          # اكتب سطر جديد على رأس كل دقيقة (UTC) إذا لقينا سعر
-          if [ -n "${PRICE}" ]; then
-            DT=$(date -u +'%Y-%m-%dT%H:%M:00Z')
-            LAST_DT=$(tail -n 1 "$OUT_M" | cut -d, -f1 || echo "")
-            if [ "$LAST_DT" != "$DT" ]; then
-              echo "$DT,$PRICE,${SRC:-unknown}" >> "$OUT_M"
-            fi
+          if [ "$LAST_TS" != "$TS" ]; then
+            echo "$TS,$PRICE" >> "$OUT"
+            echo "Appended $TS,$PRICE"
           else
-            echo "No price fetched this minute"
+            echo "Already have row for $TS"
           fi
 
       - name: Commit CSV (if changed)
-        shell: bash
         run: |
-          set -e
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add XAUUSD_minutely.csv || true
+          git add XAUUSD_5min.csv || true
           if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "Minutely gold price update"
+          git commit -m "5-min gold price update"
           git push
