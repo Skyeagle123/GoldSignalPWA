@@ -14,50 +14,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch latest gold price and update CSV
+      - name: Update CSV from Stooq (XAUUSD)
+        shell: bash
         run: |
           set -euo pipefail
           OUT="XAUUSD_live.csv"
           [ -f "$OUT" ] || echo "Date,Close" > "$OUT"
 
-          EPOCH_NOW=$(date +%s)
-          EPOCH_PAST=$(date -d '30 days ago' +%s)
+          # نزّل أحدث بيانات يومية من Stooq
+          curl -sS -L -A "Mozilla/5.0" "https://stooq.com/q/d/l/?s=xauusd&i=d" -o /tmp/stooq.csv
 
-          # المحاولة 1: Yahoo (عقود GC=F)
-          YURL="https://query1.finance.yahoo.com/v7/finance/download/GC=F?period1=${EPOCH_PAST}&period2=${EPOCH_NOW}&interval=1d&events=history&includeAdjustedClose=true"
-          curl -sSL -A "Mozilla/5.0" "$YURL" -o /tmp/yahoo.csv || true
+          # لو الملف فاضي، اعتبر التشغيل ناجح بدون تغييرات
+          [ -s /tmp/stooq.csv ] || { echo "Stooq download empty"; exit 0; }
 
-          DATE=""; CLOSE=""
-          if [ -s /tmp/yahoo.csv ]; then
-            LAST=$(tail -n 1 /tmp/yahoo.csv || true)
-            DATE=$(echo "$LAST" | cut -d, -f1)
-            CLOSE=$(echo "$LAST" | cut -d, -f5)
-          fi
+          # آخر سطر فعلي (تجاوز الهيدر)
+          LAST=$(tail -n +2 /tmp/stooq.csv | tail -n 1 || true)
+          DATE=$(echo "$LAST" | cut -d, -f1)
+          CLOSE=$(echo "$LAST" | cut -d, -f5)
 
-          # المحاولة 2: Stooq (XAUUSD)
-          if [ -z "${CLOSE:-}" ] || [ "$CLOSE" = "null" ]; then
-            curl -sSL -A "Mozilla/5.0" "https://stooq.com/q/d/l/?s=xauusd&i=d" -o /tmp/stooq.csv || true
-            if [ -s /tmp/stooq.csv ]; then
-              LAST=$(tail -n 1 /tmp/stooq.csv || true)
-              DATE=$(echo "$LAST" | cut -d, -f1)
-              CLOSE=$(echo "$LAST" | cut -d, -f5)
-            fi
+          # لو ما قدرنا نقرأ قيم، إخرج بنجاح بدون تعديل
+          if [ -z "${DATE:-}" ] || [ -z "${CLOSE:-}" ]; then
+            echo "No parsed values"; exit 0
           fi
 
           # أضف السطر فقط إذا تاريخ جديد
-          if [ -n "${DATE:-}" ] && [ -n "${CLOSE:-}" ]; then
-            LAST_DATE=$(tail -n 1 "$OUT" | cut -d, -f1 || echo "")
-            if [ "$LAST_DATE" != "$DATE" ]; then
-              echo "$DATE,$CLOSE" >> "$OUT"
-            fi
-          else
-            echo "No price fetched"; exit 0
+          LAST_DATE=$(tail -n 1 "$OUT" | cut -d, -f1 || echo "")
+          if [ "$LAST_DATE" != "$DATE" ]; then
+            echo "$DATE,$CLOSE" >> "$OUT"
           fi
 
       - name: Commit CSV (if changed)
+        shell: bash
         run: |
+          set -e
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add XAUUSD_live.csv
-          git commit -m "Update XAUUSD_live.csv" || echo "No changes"
+          git commit -m "Update XAUUSD_live.csv" || exit 0
           git push
