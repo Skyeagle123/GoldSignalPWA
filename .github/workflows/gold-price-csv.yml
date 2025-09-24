@@ -1,0 +1,76 @@
+name: Gold price CSV (daily)
+
+on:
+  workflow_dispatch:        # تشغيل يدوي
+  schedule:
+    - cron: '0 15 * * *'    # يوميًا 18:00 بتوقيت بيروت (15:00 UTC)
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Fetch price and update CSV
+        shell: bash
+        run: |
+          set -e
+          mkdir -p GoldSignalsPWA
+          OUT="GoldSignalsPWA/XAUUSD_live.csv"
+          if [ ! -f "$OUT" ]; then echo "Date,Close" > "$OUT"; fi
+
+          # احسب أزمان التحميل لآخر 30 يوم (لـ Yahoo)
+          PY_EPOCH_NOW=$(python - <<'PY'
+import time; print(int(time.time()))
+PY
+)
+          PY_EPOCH_PAST=$(python - <<'PY'
+import time; print(int(time.time()-30*24*3600))
+PY
+)
+
+          # المحاولة 1: Yahoo (GC=F)
+          YURL="https://query1.finance.yahoo.com/v7/finance/download/GC=F?period1=${PY_EPOCH_PAST}&period2=${PY_EPOCH_NOW}&interval=1d&events=history&includeAdjustedClose=true"
+          curl -sSL "$YURL" -o /tmp/yahoo.csv || true
+          DATE=""
+          CLOSE=""
+
+          if [ -s /tmp/yahoo.csv ]; then
+            LAST=$(tail -n 1 /tmp/yahoo.csv || true)
+            DATE=$(echo "$LAST" | cut -d, -f1 | tr -d '\r')
+            CLOSE=$(echo "$LAST" | cut -d, -f5 | tr -d '\r')
+          fi
+
+          # المحاولة 2 (بديلة): Stooq (xauusd)
+          if [ -z "$CLOSE" ] || [ "$CLOSE" = "null" ]; then
+            curl -sSL "https://stooq.com/q/d/l/?s=xauusd&i=d" -o /tmp/stooq.csv || true
+            if [ -s /tmp/stooq.csv ]; then
+              LAST=$(tail -n 1 /tmp/stooq.csv || true)
+              DATE=$(echo "$LAST" | cut -d, -f1 | tr -d '\r')
+              CLOSE=$(echo "$LAST" | cut -d, -f5 | tr -d '\r')
+            fi
+          fi
+
+          # إذا ما قدرنا نجيب سعر، نخرج بهدوء (ما منكسّر الورن فلو)
+          if [ -z "$DATE" ] || [ -z "$CLOSE" ]; then
+            echo "No price fetched"; exit 0
+          fi
+
+          # أضِف السطر إذا مش موجود لنفس التاريخ
+          LAST_DATE=$(tail -n 1 "$OUT" | cut -d, -f1 | tr -d '\r' || true)
+          if [ "$LAST_DATE" != "$DATE" ]; then
+            echo "$DATE,$CLOSE" >> "$OUT"
+          fi
+
+      - name: Commit CSV
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "Update XAUUSD_live.csv" || echo "No changes"
+          git push
