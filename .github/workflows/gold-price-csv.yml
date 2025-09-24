@@ -3,7 +3,7 @@ name: Gold price CSV (minutely)
 on:
   workflow_dispatch:          # تشغيل يدوي من Actions
   schedule:
-    - cron: '* * * * *'       # محاولة تشغيل كل دقيقة (UTC)
+    - cron: '5 * * * *'       # محاولة تشغيل كل ٥ دقائق (UTC)
 
 permissions:
   contents: write
