@@ -1,9 +1,9 @@
-name: Gold price CSV (5min → raw branch)
+name: Gold price CSV (5min)
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/5 * * * *'   # كل 5 دقائق (UTC)
+    - cron: '*/5 * * * *'   # كل 5 دقايق بالـUTC
 
 permissions:
   contents: write
@@ -17,68 +17,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # لازم نقدر ننشئ/نبدل فروع
 
-      - name: Switch to data branch (create if missing)
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git ls-remote --heads origin data >/dev/null 2>&1 && \
-             [ -n "$(git ls-remote --heads origin data | awk '{print $1}')" ]; then
-            git checkout -B data origin/data
-          else
-            git checkout --orphan data
-            rm -rf ./*
-          fi
-
-      - name: Update 5-min CSV (Date,Close) with forward-fill
+      - name: Update 5-min CSV (Date,Close)
         shell: bash
         run: |
           set -euo pipefail
           OUT="XAUUSD_5min.csv"
           [ -f "$OUT" ] || echo "Date,Close" > "$OUT"
 
-          # السطر الحي من Stooq
+          # سطر حي من Stooq (XAUUSD)
           CSV=$(curl -sS -L -A "Mozilla/5.0" "https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlcv&h&e=csv" || true)
           LINE=$(printf '%s\n' "$CSV" | sed -n '2p' | tr -d '\r' || true)
-          NEW_PRICE=$(printf '%s' "$LINE" | awk -F, '{print $7}')
+          PRICE=$(printf '%s' "$LINE" | awk -F, '{print $7}')
 
+          # طابع زمني مضبوط على الـtick الحالي (الـrun أصلاً على دقيقة 0/5/10...)
           TS=$(date -u +'%Y-%m-%dT%H:%M:00Z')
-          LAST_LINE=$(tail -n 1 "$OUT" || echo "")
-          LAST_TS=$(printf '%s' "$LAST_LINE" | cut -d, -f1)
-          LAST_PRICE=$(printf '%s' "$LAST_LINE" | cut -d, -f2)
+          LAST_TS=$(tail -n 1 "$OUT" | cut -d, -f1 || echo "")
 
-          # ما نكرّر لنفس الدقيقة
-          if [ "$LAST_TS" = "$TS" ]; then
-            echo "Row for $TS already exists."
+          # لو ما قدرنا نقرأ رقم، ما منضيف شي (منعيد بعد 5 دق)
+          if ! [[ "$PRICE" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "No price parsed; skip"
             exit 0
           fi
 
-          PRICE=""
-          if [[ "$NEW_PRICE" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-            PRICE="$NEW_PRICE"
-            echo "Parsed live price: $PRICE"
-          elif [[ "$LAST_PRICE" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-            PRICE="$LAST_PRICE"
-            echo "Forward-fill with last price: $PRICE"
+          if [ "$LAST_TS" != "$TS" ]; then
+            echo "$TS,$PRICE" >> "$OUT"
+            echo "Appended $TS,$PRICE"
           else
-            echo "No price available (no live & no last). Skip."
-            exit 0
+            echo "Already have row for $TS"
           fi
 
-          echo "$TS,$PRICE" >> "$OUT"
-
-          # احتفظ بآخر 1000 سطر + الهيدر
-          LINES=$(wc -l < "$OUT" || echo 0)
-          if [ "$LINES" -gt 1001 ]; then
-            { head -n 1 "$OUT"; tail -n 1000 "$OUT"; } > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"
-          fi
-
-      - name: Commit to data branch (if changed)
-        shell: bash
+      - name: Commit CSV (if changed)
         run: |
-          set -e
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add XAUUSD_5min.csv || true
@@ -86,5 +56,5 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "5-min gold price update (data branch)"
-          git push -u origin data
+          git commit -m "5-min gold price update"
+          git push
