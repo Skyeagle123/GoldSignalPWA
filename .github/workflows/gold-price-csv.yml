@@ -1,9 +1,9 @@
-name: Gold price CSV (hourly)
+name: Gold price CSV (minutely)
 
 on:
-  workflow_dispatch:          # تشغيل يدوي
+  workflow_dispatch:          # تشغيل يدوي من Actions
   schedule:
-    - cron: '0 * * * *'       # كل ساعة عند الدقيقة 00 (UTC)
+    - cron: '* * * * *'       # محاولة تشغيل كل دقيقة (UTC)
 
 permissions:
   contents: write
@@ -15,62 +15,67 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
+    env:
+      # إذا عندك Cloudflare Worker حطه هون (اختياري)
+      # مثال: https://goldprice-proxy.<yourname>.workers.dev?s=GC=F
+      WORKER_URL: ''
+      # الرمز: GC=F (عقود ذهب) أو XAUUSD=X (سبوت)
+      Y_SYMBOL: 'GC=F'
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch price and update CSVs
+      - name: Fetch price (minutely) and update CSV
         shell: bash
         run: |
           set -euo pipefail
+          OUT_M="XAUUSD_minutely.csv"
+          [ -f "$OUT_M" ] || echo "DatetimeUTC,Price,Source" > "$OUT_M"
 
-          OUT_H="XAUUSD_hourly.csv"
-          OUT_D="XAUUSD_live.csv"
-          [ -f "$OUT_H" ] || echo "DatetimeUTC,Price" > "$OUT_H"
-          [ -f "$OUT_D" ] || echo "Date,Close" > "$OUT_D"
-
-          # ----- Hourly price (Yahoo -> fallback Stooq) -----
           PRICE=""
-          YJSON=$(curl -sS -L -A "Mozilla/5.0" "https://query1.finance.yahoo.com/v7/finance/quote?symbols=GC=F" || true)
-          if [ -n "$YJSON" ]; then
-            PRICE=$(echo "$YJSON" | tr -d '\n' | sed -nE 's/.*"regularMarketPrice":([0-9.]+).*/\1/p' | head -n1 || true)
+          SRC=""
+
+          # 1) لو في Worker مفعّل
+          if [ -n "${WORKER_URL}" ]; then
+            J=$(curl -sS -L "${WORKER_URL}" || true)
+            PRICE=$(echo "$J" | sed -nE 's/.*"price":\s*([0-9.]+).*/\1/p' | head -n1 || true)
+            if [ -n "${PRICE}" ]; then SRC="worker"; fi
           fi
-          if [ -z "$PRICE" ]; then
+
+          # 2) Yahoo JSON
+          if [ -z "${PRICE}" ]; then
+            YJSON=$(curl -sS -L -A "Mozilla/5.0" "https://query1.finance.yahoo.com/v7/finance/quote?symbols=${Y_SYMBOL}" || true)
+            PRICE=$(echo "$YJSON" | tr -d '\n' | sed -nE 's/.*"regularMarketPrice":\s*([0-9.]+).*/\1/p' | head -n1 || true)
+            if [ -n "${PRICE}" ]; then SRC="yahoo"; fi
+          fi
+
+          # 3) fallback: Stooq (آخر سعر Close)
+          if [ -z "${PRICE}" ]; then
             SCSV=$(curl -sS -L -A "Mozilla/5.0" "https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlcv&h&e=csv" || true)
             PRICE=$(echo "$SCSV" | awk -F, 'NR==2{print $7}' || true)
+            if [ -n "${PRICE}" ]; then SRC="stooq"; fi
           fi
 
-          if [ -n "${PRICE:-}" ]; then
-            DATE_H=$(date -u +'%Y-%m-%dT%H:00:00Z')                # طابع زمني على رأس الساعة (UTC)
-            LAST_H=$(tail -n 1 "$OUT_H" | cut -d, -f1 || echo "")
-            if [ "$LAST_H" != "$DATE_H" ]; then
-              echo "$DATE_H,$PRICE" >> "$OUT_H"
+          # اكتب سطر جديد على رأس كل دقيقة (UTC) إذا لقينا سعر
+          if [ -n "${PRICE}" ]; then
+            DT=$(date -u +'%Y-%m-%dT%H:%M:00Z')
+            LAST_DT=$(tail -n 1 "$OUT_M" | cut -d, -f1 || echo "")
+            if [ "$LAST_DT" != "$DT" ]; then
+              echo "$DT,$PRICE,${SRC:-unknown}" >> "$OUT_M"
             fi
           else
-            echo "No hourly price fetched"
+            echo "No price fetched this minute"
           fi
 
-          # ----- Daily close (Stooq daily CSV) -----
-          curl -sS -L -A "Mozilla/5.0" "https://stooq.com/q/d/l/?s=xauusd&i=d" -o /tmp/stooq_daily.csv || true
-          if [ -s /tmp/stooq_daily.csv ]; then
-            LAST=$(tail -n +2 /tmp/stooq_daily.csv | tail -n 1 || true)
-            DDATE=$(echo "$LAST" | cut -d, -f1)
-            DCLOSE=$(echo "$LAST" | cut -d, -f5)
-            LAST_D=$(tail -n 1 "$OUT_D" | cut -d, -f1 || echo "")
-            if [ -n "${DDATE:-}" ] && [ -n "${DCLOSE:-}" ] && [ "$LAST_D" != "$DDATE" ]; then
-              echo "$DDATE,$DCLOSE" >> "$OUT_D"
-            fi
-          fi
-
-      - name: Commit CSVs (if changed)
+      - name: Commit CSV (if changed)
         shell: bash
         run: |
           set -e
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add XAUUSD_hourly.csv XAUUSD_live.csv || true
+          git add XAUUSD_minutely.csv || true
           if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "Hourly gold price update"
+          git commit -m "Minutely gold price update"
           git push
