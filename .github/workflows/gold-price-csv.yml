@@ -1,9 +1,9 @@
 name: Gold price CSV (daily)
 
 on:
-  workflow_dispatch:        # تشغيل يدوي
+  workflow_dispatch:          # تشغيل يدوي
   schedule:
-    - cron: '0 15 * * *'    # يوميًا 18:00 بتوقيت بيروت (15:00 UTC)
+    - cron: '0 15 * * *'      # يوميًا 18:00 بتوقيت بيروت (15:00 UTC)
 
 permissions:
   contents: write
@@ -13,64 +13,52 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: true
 
-      - name: Fetch price and update CSV
-        shell: bash
+      - name: Fetch latest gold price and update CSV
         run: |
-          set -e
-          mkdir -p GoldSignalsPWA
-          OUT="GoldSignalsPWA/XAUUSD_live.csv"
-          if [ ! -f "$OUT" ]; then echo "Date,Close" > "$OUT"; fi
+          set -euo pipefail
+          OUT="XAUUSD_live.csv"
+          test -f "$OUT" || echo "Date,Close" > "$OUT"
 
-          # احسب أزمان التحميل لآخر 30 يوم (لـ Yahoo)
-          PY_EPOCH_NOW=$(python - <<'PY'
-import time; print(int(time.time()))
-PY
-)
-          PY_EPOCH_PAST=$(python - <<'PY'
-import time; print(int(time.time()-30*24*3600))
-PY
-)
+          # آخر 30 يوم (بدون Python)
+          EPOCH_NOW=$(date +%s)
+          EPOCH_PAST=$(date -d '30 days ago' +%s)
 
-          # المحاولة 1: Yahoo (GC=F)
-          YURL="https://query1.finance.yahoo.com/v7/finance/download/GC=F?period1=${PY_EPOCH_PAST}&period2=${PY_EPOCH_NOW}&interval=1d&events=history&includeAdjustedClose=true"
-          curl -sSL "$YURL" -o /tmp/yahoo.csv || true
-          DATE=""
-          CLOSE=""
+          # المحاولة 1: Yahoo (عقود الذهب GC=F)
+          YURL="https://query1.finance.yahoo.com/v7/finance/download/GC=F?period1=${EPOCH_PAST}&period2=${EPOCH_NOW}&interval=1d&events=history&includeAdjustedClose=true"
+          curl -sSL -A "Mozilla/5.0" "$YURL" -o /tmp/yahoo.csv || true
 
+          DATE=""; CLOSE=""
           if [ -s /tmp/yahoo.csv ]; then
             LAST=$(tail -n 1 /tmp/yahoo.csv || true)
-            DATE=$(echo "$LAST" | cut -d, -f1 | tr -d '\r')
-            CLOSE=$(echo "$LAST" | cut -d, -f5 | tr -d '\r')
+            DATE=$(echo "$LAST" | cut -d, -f1)
+            CLOSE=$(echo "$LAST" | cut -d, -f5)
           fi
 
-          # المحاولة 2 (بديلة): Stooq (xauusd)
-          if [ -z "$CLOSE" ] || [ "$CLOSE" = "null" ]; then
-            curl -sSL "https://stooq.com/q/d/l/?s=xauusd&i=d" -o /tmp/stooq.csv || true
+          # المحاولة 2: Stooq (XAUUSD)
+          if [ -z "${CLOSE:-}" ] || [ "$CLOSE" = "null" ]; then
+            curl -sSL -A "Mozilla/5.0" "https://stooq.com/q/d/l/?s=xauusd&i=d" -o /tmp/stooq.csv || true
             if [ -s /tmp/stooq.csv ]; then
               LAST=$(tail -n 1 /tmp/stooq.csv || true)
-              DATE=$(echo "$LAST" | cut -d, -f1 | tr -d '\r')
-              CLOSE=$(echo "$LAST" | cut -d, -f5 | tr -d '\r')
+              DATE=$(echo "$LAST" | cut -d, -f1)
+              CLOSE=$(echo "$LAST" | cut -d, -f5)
             fi
           fi
 
-          # إذا ما قدرنا نجيب سعر، نخرج بهدوء (ما منكسّر الورن فلو)
-          if [ -z "$DATE" ] || [ -z "$CLOSE" ]; then
-            echo "No price fetched"; exit 0
+          # إذا جبنا تاريخ/سعر، أضِف السطر إذا جديد
+          if [ -n "${DATE:-}" ] && [ -n "${CLOSE:-}" ]; then
+            LAST_DATE=$(tail -n 1 "$OUT" | cut -d, -f1 || echo "")
+            if [ "$LAST_DATE" != "$DATE" ]; then
+              echo "$DATE,$CLOSE" >> "$OUT"
+            fi
+          else
+            echo "No price fetched (Yahoo & Stooq failed)"; exit 0
           fi
 
-          # أضِف السطر إذا مش موجود لنفس التاريخ
-          LAST_DATE=$(tail -n 1 "$OUT" | cut -d, -f1 | tr -d '\r' || true)
-          if [ "$LAST_DATE" != "$DATE" ]; then
-            echo "$DATE,$CLOSE" >> "$OUT"
-          fi
-
-      - name: Commit CSV
+      - name: Commit CSV (if changed)
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add -A
+          git add XAUUSD_live.csv
           git commit -m "Update XAUUSD_live.csv" || echo "No changes"
           git push
