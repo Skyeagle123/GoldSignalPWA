@@ -299,6 +299,6 @@ els.minuteBtn.addEventListener('click', runMinute);
 els.hourBtn.addEventListener('click', ()=> runHour( (els.csvUrl.value||'').trim() || DEFAULT_HOURLY ));
 els.dayBtn.addEventListener('click',  ()=> runDay ( (els.csvUrl.value||'').trim() || DEFAULT_DAILY  ));
 
-// تفعيل تحديث السعر الحي كل 60 ثانية تلقائيًا
+// تفعيل تحديث السعر الحي كل 30 ثانية تلقائيًا
 tickLive();
-setInterval(tickLive, 60_000);
+setInterval(tickLive, 30_000);
