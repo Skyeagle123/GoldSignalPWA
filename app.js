@@ -16,18 +16,24 @@ const els = {
   livePrice: document.getElementById('livePrice'),
   liveTime: document.getElementById('liveTime'),
   liveSummary: document.getElementById('liveSummary'),
+  // Pivot elements
+  r1: document.getElementById('r1'),
+  r2: document.getElementById('r2'),
+  r3: document.getElementById('r3'),
+  s1: document.getElementById('s1'),
+  s2: document.getElementById('s2'),
+  s3: document.getElementById('s3'),
+  pp: document.getElementById('pp'),
   table: document.getElementById('dataTable').querySelector('tbody'),
 };
 
 /*************** أدوات ***************/
 function repoBase() {
-  // https://skyeagle123.github.io/GoldSignalPWA/
   const path = location.pathname;
   const basePath = path.endsWith('/') ? path : path.replace(/[^/]*$/, '');
   return location.origin + basePath;
 }
 function defaultCsvUrl() {
-  // XAUUSD_5min.csv بجانب index.html
   return new URL('XAUUSD_5min.csv', repoBase()).href;
 }
 function saveCsv(v){ localStorage.setItem(LS_KEY, v||''); }
@@ -37,19 +43,20 @@ function fmtIso(d){
   return d.getUTCFullYear()+'-'+pad2(d.getUTCMonth()+1)+'-'+pad2(d.getUTCDate())+
          ' '+pad2(d.getUTCHours())+':'+pad2(d.getUTCMinutes())+':'+pad2(d.getUTCSeconds())+'.000';
 }
+function dayKeyUTC(d){
+  return d.getUTCFullYear()+'-'+pad2(d.getUTCMonth()+1)+'-'+pad2(d.getUTCDate());
+}
 
 /*************** تحميل CSV ***************/
 async function fetch5mCsvText() {
   const custom = (els.csv.value || '').trim();
   const url = custom || defaultCsvUrl();
-  // no-store + cache-bust
   const bust = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
   const r = await fetch(bust, { cache: 'no-store' });
   if (!r.ok) throw new Error('HTTP '+r.status);
   return await r.text();
 }
 function parseCsv(text){
-  // يتوقع وجود أعمدة Date و Close
   const lines = text.trim().split(/\r?\n/);
   if (lines.length<2) throw new Error('ملف CSV فارغ');
   const headers = lines[0].split(',').map(s=>s.trim().toLowerCase());
@@ -76,10 +83,9 @@ function resample(rows, tf) {
     if (tf===TF['1h']){
       key = r.t.getUTCFullYear()+'-'+pad2(r.t.getUTCMonth()+1)+'-'+pad2(r.t.getUTCDate())+' '+pad2(r.t.getUTCHours());
     } else { // يومي
-      key = r.t.getUTCFullYear()+'-'+pad2(r.t.getUTCMonth()+1)+'-'+pad2(r.t.getUTCDate());
+      key = dayKeyUTC(r.t);
     }
-    // نأخذ آخر الأسعار ضمن نفس السلة
-    map.set(key, r);
+    map.set(key, r); // آخر قيمة ضمن السلة
   }
   return Array.from(map.entries()).sort((a,b)=>a[0]>b[0]?1:-1).map(x=>x[1]);
 }
@@ -110,14 +116,14 @@ function rsi(values, period){
     losses = (losses*(period-1)+l)/period;
     out[i] = losses===0?100:100 - 100/(1+gains/losses);
   }
-  return out;
+  return out.map(v=> v==null?null:+v.toFixed(2));
 }
 function computeIndicators(rows, pFast, pSlow, pRsi){
   const closes = rows.map(r=>r.close);
   const emaF = ema(closes, pFast);
   const emaS = ema(closes, pSlow);
   const macd = emaF.map((v,i)=> (v!=null && emaS[i]!=null) ? +(v-emaS[i]).toFixed(4) : null);
-  const rsiArr = rsi(closes, pRsi).map(v=> v==null?null:+v.toFixed(2));
+  const rsiArr = rsi(closes, pRsi);
   return rows.map((r,i)=>({
     ...r,
     emaF: +emaF[i].toFixed(2),
@@ -127,10 +133,32 @@ function computeIndicators(rows, pFast, pSlow, pRsi){
 }
 function decideSignal(row){
   if (row.rsi==null || row.macd==null) return 'حيادي';
-  // قواعد بسيطة
   if (row.rsi<35 || row.macd>0) return 'شراء';
   if (row.rsi>65 || row.macd<0) return 'بيع';
   return 'حيادي';
+}
+
+/*************** Pivot (دعم/مقاومة) ***************/
+function computeDailyPivotFrom5m(raw5m){
+  if (!raw5m?.length) return null;
+  const last = raw5m[raw5m.length-1];
+  const k = dayKeyUTC(last.t);
+  let dayRows = raw5m.filter(r=> dayKeyUTC(r.t)===k);
+  // في حال البيانات قليلة جدًا لليوم الحالي، خذ آخر ~288 شمعة (حوالي يوم تداول من 5 دقائق)
+  if (dayRows.length < 10) dayRows = raw5m.slice(-288);
+  const highs = dayRows.map(r=>r.close);
+  const H = Math.max(...highs);
+  const L = Math.min(...highs);
+  const C = dayRows[dayRows.length-1].close;
+  const P = (H+L+C)/3;
+  const R1 = 2*P - L;
+  const S1 = 2*P - H;
+  const R2 = P + (H - L);
+  const S2 = P - (H - L);
+  const R3 = H + 2*(P - L);
+  const S3 = L - 2*(H - P);
+  const fx = v => +v.toFixed(2);
+  return { P:fx(P), R1:fx(R1), R2:fx(R2), R3:fx(R3), S1:fx(S1), S2:fx(S2), S3:fx(S3) };
 }
 
 /*************** واجهة ***************/
@@ -140,18 +168,30 @@ function markTf(){
   else if (currentTf===TF['1h']) els.tf60.classList.add('active');
   else els.tfD.classList.add('active');
 }
+
 async function run(){
   try{
     const txt = await fetch5mCsvText();
     const raw5m = parseCsv(txt);
-    const used = resample(raw5m, currentTf);
 
+    // Pivot من 5 دقائق (تقريب يومي)
+    const piv = computeDailyPivotFrom5m(raw5m);
+    if (piv){
+      els.r1.textContent = piv.R1; els.r2.textContent = piv.R2; els.r3.textContent = piv.R3;
+      els.s1.textContent = piv.S1; els.s2.textContent = piv.S2; els.s3.textContent = piv.S3;
+      els.pp.textContent = piv.P;
+    } else {
+      ['r1','r2','r3','s1','s2','s3','pp'].forEach(k=> els[k].textContent='—');
+    }
+
+    // تحويل للإطار الزمني المطلوب
+    const used = resample(raw5m, currentTf);
     const pF = Math.max(2, parseInt(els.emaF.value||'12',10));
     const pS = Math.max(pF+1, parseInt(els.emaS.value||'26',10));
     const pR = Math.max(2, parseInt(els.rsiP.value||'14',10));
     const rows = computeIndicators(used, pF, pS, pR);
 
-    // آخر صف = السعر الحي
+    // السعر الحي
     const last = rows[rows.length-1];
     els.livePrice.textContent = last ? last.close.toFixed(2) : '—';
     els.liveTime.textContent = last ? fmtIso(last.t) : '—';
@@ -162,9 +202,8 @@ async function run(){
     else if (sig==='بيع') els.liveSummary.classList.add('bad');
     else els.liveSummary.classList.add('warn');
 
-    // جدول آخر 50 صف (من الأحدث)
-    const body = els.table;
-    body.innerHTML = '';
+    // جدول آخر 50 صف (الأحدث أولاً)
+    const body = els.table; body.innerHTML = '';
     const take = rows.slice(-50).reverse();
     for (const r of take){
       const tr = document.createElement('tr');
@@ -205,5 +244,5 @@ async function run(){
 
   markTf();
   run();
-  setInterval(run, 60_000); // حدّث كل 60 ثانية
+  setInterval(run, 30_000); // تحديث كل 30 ثانية
 })();
