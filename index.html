@@ -3,126 +3,107 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#111827" />
-  <title>إشارات الذهب - GoldSignals</title>
-  <link rel="manifest" href="manifest.json" />
-  <!-- أيقونات (تأكد من المسارات حسب ملفاتك) -->
+  <meta name="theme-color" content="#0b1220" />
+  <title>GoldSignals • إشارات الذهب</title>
+
+  <!-- أيقونات (تأكد من وجود هذين الملفين في الجذر) -->
   <link rel="icon" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="manifest" href="manifest.json" />
+
   <style>
-    :root{--bg:#0b1220;--panel:#111827;--line:#1f2937;--muted:#9ca3af;--text:#e5e7eb;--good:#10b981;--bad:#f87171;--warn:#f59e0b;}
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Noto Sans",sans-serif}
-    header{position:sticky;top:0;z-index:10;background:#0b1220cc;border-bottom:1px solid var(--line);backdrop-filter:blur(6px)}
-    header .wrap{max-width:1100px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:12px}
+    :root{
+      --bg:#0b1220; --card:#111827; --line:#1f2937; --text:#e5e7eb; --muted:#9ca3af;
+      --good:#10b981; --bad:#ef4444; --warn:#f59e0b;
+    }
+    html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif}
+    header{position:sticky;top:0;background:#0b1220cc;backdrop-filter:blur(6px);border-bottom:1px solid var(--line);padding:14px 16px;z-index:2}
     h1{margin:0;font-size:20px}
     .container{max-width:1100px;margin:0 auto;padding:16px}
-    .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 6px 18px rgba(0,0,0,.25)}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 6px 18px rgba(0,0,0,.25)}
     .row{display:flex;gap:12px;flex-wrap:wrap}
-    .col{flex:1 1 260px}
-    label{display:block;margin:0 0 6px;color:var(--muted)}
-    input,button,select,textarea{width:100%;padding:10px;border-radius:12px;border:1px solid #334155;background:#0b1220;color:var(--text)}
+    .col{flex:1 1 240px}
+    label{display:block;margin:6px 2px;color:var(--muted);font-size:14px}
+    input,button,select{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #334155;background:var(--bg);color:var(--text)}
     button{cursor:pointer;font-weight:700}
-    table{width:100%;border-collapse:collapse}
-    th,td{border-bottom:1px solid #273449;padding:8px;text-align:center}
-    .pill{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid #334155;background:#0b1220;font-size:12px}
+    .pill{display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid #334155;background:var(--bg);font-size:13px}
     .good{color:var(--good)} .bad{color:var(--bad)} .warn{color:var(--warn)}
-    .footer{opacity:.65;font-size:12px;margin-top:10px}
-    .tabs{display:flex;gap:8px}
-    .tab{padding:8px 12px;border:1px solid #334155;border-radius:999px;background:#0b1220;cursor:pointer}
-    .tab.active{border-color:#60a5fa}
-    .muted{color:var(--muted)}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid #273449;padding:8px 10px;text-align:center;font-size:14px}
+    .hint{color:var(--muted);font-size:13px;margin-top:8px}
   </style>
 </head>
 <body>
-  <header><div class="wrap"><h1>إشارات الذهب • GoldSignals</h1></div></header>
+  <header>
+    <h1>GoldSignals • إشارات الذهب</h1>
+  </header>
 
-  <div class="container">
+  <main class="container">
 
-    <!-- الإعدادات -->
-    <div class="card">
-      <div class="grid">
+    <!-- إعدادات المؤشرات -->
+    <section class="card">
+      <h3 style="margin-top:0">إعدادات المؤشرات</h3>
+      <div class="row">
         <div class="col">
-          <label>رابط CSV للأسعار (إختياري):</label>
-          <input id="csvUrl" placeholder="مثال: Google Sheet منشور كـ CSV" />
-          <div class="muted" style="font-size:12px;margin-top:6px">
-            لو تركته فاضي، رح نستخدم ملفات المستودع (5 دقائق/ساعة/يوم).
-          </div>
+          <label for="emaFast">EMA سريع</label>
+          <input id="emaFast" type="number" value="12" inputmode="numeric" />
         </div>
-
         <div class="col">
-          <label>المصدر:</label>
-          <select id="sourceSel">
-            <option value="csv">تسجيل من CSV</option>
-            <option value="demo">وضع تجريبي (بدون CSV)</option>
-          </select>
+          <label for="emaSlow">EMA بطيء</label>
+          <input id="emaSlow" type="number" value="26" inputmode="numeric" />
         </div>
-
         <div class="col">
-          <label>إطار زمني:</label>
-          <div class="tabs">
-            <button class="tab active" data-frame="min" id="tabMin">دقيقة</button>
-            <button class="tab" data-frame="hour" id="tabHour">ساعة</button>
-            <button class="tab" data-frame="day" id="tabDay">يوم</button>
-          </div>
+          <label for="rsiPeriod">فترة RSI</label>
+          <input id="rsiPeriod" type="number" value="14" inputmode="numeric" />
         </div>
       </div>
-
       <div class="row" style="margin-top:12px">
         <div class="col">
-          <label>إعدادات المؤشرات:</label>
-          <div class="row">
-            <div class="col"><input id="emaFast" type="number" value="12"><label>EMA سريع</label></div>
-            <div class="col"><input id="emaSlow" type="number" value="26"><label>EMA بطيء</label></div>
-            <div class="col"><input id="rsiPeriod" type="number" value="14"><label>RSI فترة</label></div>
-          </div>
+          <button id="runBtn">حساب الإشارات الآن</button>
         </div>
-        <div class="col" style="align-self:flex-end"><button id="runBtn">حساب الإشارات الآن</button></div>
-        <div class="col" style="align-self:flex-end"><button id="installBtn" style="display:none">تثبيت التطبيق</button></div>
       </div>
-
-      <p class="footer">التطبيق يعمل بدون خادم: بيحسب المؤشرات محليّاً. للبيانات الحيّة للدقيقة نستخدم مصدر عام، وللساعة/اليوم نقرأ CSV من المستودع أو من رابطك.</p>
-    </div>
+      <p class="hint">التطبيق يعمل بدون خادم ويقرأ تلقائيًا ملف <b>XAUUSD_5min.csv</b> من الريبو، ويحدَّث كل دقيقة. يمكنك تغيير القيم بالأعلى ثم الضغط على الزر.</p>
+    </section>
 
     <!-- ملخص الإشارة -->
-    <div class="card" id="summaryCard">
-      <h3>ملخّص الإشارة الآن</h3>
-      <div style="display:flex;align-items:center;gap:12px;margin-top:6px">
-        <span id="signalBadge" class="pill warn">—</span>
-        <span id="signalNote" class="muted">جاهز للحساب…</span>
-      </div>
-      <div id="livePriceLine" class="muted" style="margin-top:6px;font-size:13px">السعر الحي: —</div>
-    </div>
-
-    <!-- مستويات Pivot -->
-    <div class="card" id="pivotCard">
-      <h3>مستويات الدعم والمقاومة (Pivot)</h3>
-      <div id="pivotBox" class="grid"></div>
-    </div>
+    <section class="card" id="summary">
+      <h3 style="margin-top:0">ملخّص الإشارة الآن</h3>
+      <p>
+        <span id="signalBadge" class="pill">—</span>
+        <span id="signalNote" style="margin-inline-start:8px;color:#9ca3af">جاهز للحساب…</span>
+      </p>
+      <p class="hint">السعر الحي: <b id="livePrice">-</b></p>
+    </section>
 
     <!-- جدول المؤشرات -->
-    <div class="card" id="signalsCard">
-      <h3>جدول المؤشرات</h3>
-      <table id="signalsTbl">
-        <thead><tr><th>المؤشر</th><th>القيمة</th><th>الإشارة</th></tr></thead>
-        <tbody id="signalsBody"></tbody>
+    <section class="card">
+      <h3 style="margin-top:0">جدول المؤشرات</h3>
+      <table id="indicators">
+        <thead id="indHead"></thead>
+        <tbody id="indBody"></tbody>
       </table>
-    </div>
+    </section>
 
     <!-- البيانات الأخيرة -->
-    <div class="card">
-      <h3>البيانات الأخيرة</h3>
+    <section class="card">
+      <h3 style="margin-top:0">البيانات الأخيرة</h3>
       <div style="overflow:auto">
         <table id="table">
           <thead id="tableHead"></thead>
           <tbody id="tableBody"></tbody>
         </table>
       </div>
-    </div>
+    </section>
 
-    <p class="footer">© 2025 GoldSignals • PWA</p>
-  </div>
+    <p class="hint">* هذه المعلومات تعليمية وليست نصيحة استثمارية.</p>
+  </main>
 
+  <!-- سكربت التطبيق -->
   <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(()=>{});
+    }
+  </script>
 </body>
 </html>
