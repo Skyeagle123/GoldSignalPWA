@@ -6,7 +6,6 @@
   <meta name="theme-color" content="#0b1220" />
   <title>إشارات الذهب - GoldSignals</title>
 
-  <!-- (اختياري) PWA -->
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="icons/icon-192.png" />
 
@@ -27,6 +26,8 @@
     .pill{display:inline-block;padding:6px 10px;border-radius:999px;border:1px solid #334155;background:#0b1220;font-size:12px;margin:4px 6px 0 0}
     .good{color:#10b981} .bad{color:#f87171} .warn{color:#f59e0b}
     .hint{opacity:.7;font-size:12px;margin-top:8px}
+    .live{font-size:28px;font-weight:800;letter-spacing:.5px}
+    .muted{opacity:.75}
   </style>
 </head>
 <body>
@@ -42,7 +43,7 @@
         <div class="col">
           <label for="csvUrl">رابط CSV للأسعار (اختياري)</label>
           <input id="csvUrl" placeholder="اتركه فاضي ليستخدم ملف 5 دقائق الافتراضي">
-          <div class="hint">إذا تركته فاضي: سيقرأ من <code>XAUUSD_5min.csv</code> من الريبو تلقائياً.</div>
+          <div class="hint">إذا تركته فاضي سيقرأ من <code>XAUUSD_5min.csv</code> من الريبو تلقائياً.</div>
         </div>
       </div>
 
@@ -66,7 +67,15 @@
         <div class="col"><button id="runBtn">حساب الإشارات الآن</button></div>
       </div>
 
-      <p class="hint">التطبيق يحسب المؤشرات محلياً. يحدّث نفسه كل 60 ثانية ويلتقط آخر صف من ملف الـCSV.</p>
+      <p class="hint">يحدّث نفسه كل 60 ثانية ويلتقط آخر صف من ملف الـCSV.</p>
+    </div>
+
+    <!-- السعر الحي -->
+    <div class="card">
+      <h3 style="margin-top:0">السعر الحي</h3>
+      <div id="liveBox">
+        <div class="muted">جاهز…</div>
+      </div>
     </div>
 
     <!-- ملخص الإشارة -->
@@ -74,6 +83,20 @@
       <h3 style="margin-top:0">ملخّص الإشارة الآن</h3>
       <div id="summary" class="grid">
         <span class="pill">جاهز للحساب…</span>
+      </div>
+    </div>
+
+    <!-- الدعم والمقاومة -->
+    <div class="card">
+      <h3 style="margin-top:0">جدول الدعم والمقاومة</h3>
+      <div class="hint">محسوبة من آخر 24 ساعة تقريباً (اعتماداً على ملف 5 دقائق).</div>
+      <div style="overflow:auto">
+        <table id="srTable">
+          <thead>
+            <tr><th>المستوى</th><th>القيمة</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
       </div>
     </div>
 
@@ -90,7 +113,6 @@
 
   </div>
 
-  <!-- سكريبت التطبيق -->
   <script src="app.js"></script>
 </body>
 </html>
