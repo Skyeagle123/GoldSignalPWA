@@ -26,7 +26,9 @@
     .footer{opacity:.6;font-size:12px;margin-top:24px}
     a{color:#93c5fd}
     .signal{font-size:14px}
-  </style>
+  </style>  
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 </head>
 <body>
   <header>
@@ -62,7 +64,21 @@
       <p class="footer">تلميح: يمكنك نشر Google Sheet كـ CSV ثم لصق الرابط هنا. التطبيق يعمل بدون خادم ويحسب المؤشرات محلياً على جهازك.</p>
     </div>
 
-    <div class="card">
+    <div class="card"> 
+     <div class="card">
+  <div class="row" style="align-items:center;justify-content:space-between">
+    <div class="pill">
+      <button id="tfMin"  type="button">دقيقة</button>
+      <button id="tfHour" type="button">ساعة</button>
+      <button id="tfDay"  type="button">يوم</button>
+    </div>
+    <div>
+      <span class="pill">السعر الحي: <strong id="livePrice">—</strong> <span id="liveTs" style="opacity:.7"></span></span>
+    </div>
+  </div>
+  <canvas id="chart" height="360" style="margin-top:10px"></canvas>
+  <div id="srBox" style="margin-top:10px" class="signal"></div>
+</div> 
       <h3>ملخص الإشارات</h3>
       <div id="summary" class="grid"></div>
     </div>
