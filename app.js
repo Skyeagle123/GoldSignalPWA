@@ -1,449 +1,304 @@
-/************ إعداد الروابط (عدّلها إذا لزم) ************/
-// لو عامل Cloudflare Worker لسعر GC=F حطّه هون (JSON: {price})
+/**************** إعداد المصادر (عدّلي إذا لزم) ****************/
+// خيار Worker (اختياري) لو عندك Cloudflare يُرجع JSON: {price}
 const LIVE_JSON_URL = ''; // مثال: 'https://goldprice-proxy.yourname.workers.dev?s=GC=F'
 
-// CSV اليومي بصيغة Date,Close (الأرشيف اليومي)
-const DAILY_CSV_URL  = 'https://skyeagle123.github.io/GoldSignalPWA/XAUUSD_live.csv';
-// CSV الساعي بصيغة Date,Close (إذا ما عندك، رح نولّد من الدقيقة تلقائيًا)
-const HOURLY_CSV_URL = 'https://skyeagle123.github.io/GoldSignalPWA/XAUUSD_hourly.csv';
+// CSV الجاهزة من المستودع (صدقَي حالة الأحرف)
+const DEFAULT_5MIN   = 'https://skyeagle123.github.io/GoldSignalPWA/XAUUSD_5min.csv';
+const DEFAULT_HOURLY = 'https://skyeagle123.github.io/GoldSignalPWA/XAUUSD_hourly.csv';
+const DEFAULT_DAILY  = 'https://skyeagle123.github.io/GoldSignalPWA/XAUUSD_live.csv';
 
-// احتياطي سعر حي من Stooq (صف واحد: Symbol,Date,Time,Open,High,Low,Close,Volume)
-// بدّل تعريفات Stooq الحالية بهي النسخة عبر بروكسي يفتح CORS
-// استعمل بروكسي يفتح CORS
+// Stooq عبر بروكسي يفتح CORS
 const PROXY = 'https://r.jina.ai/http://';
+const STOOQ_LIVE_CSV   = PROXY + 'stooq.com/q/l/?s=xauusd&f=sd2t2ohlcv&h&e=csv'; // صف حي
+const STOOQ_DAILY_OHLC = PROXY + 'stooq.com/q/d/l/?s=xauusd&i=d';                 // OHLC يومي
 
-const STOOQ_LIVE_CSV   = PROXY + 'stooq.com/q/l/?s=xauusd&f=sd2t2ohlcv&h&e=csv';
-const STOOQ_DAILY_OHLC = PROXY + 'stooq.com/q/d/l/?s=xauusd&i=d';
+/**************** DOM ****************/
+const els = {
+  sourceSel:  document.getElementById('sourceSel'),
+  csvUrl:     document.getElementById('csvUrl'),
+  emaFast:    document.getElementById('emaFast'),
+  emaSlow:    document.getElementById('emaSlow'),
+  rsiPeriod:  document.getElementById('rsiPeriod'),
+  runBtn:     document.getElementById('runBtn'),
+  minuteBtn:  document.getElementById('minuteBtn'),
+  hourBtn:    document.getElementById('hourBtn'),
+  dayBtn:     document.getElementById('dayBtn'),
+  livePrice:  document.getElementById('livePrice'),
+  liveTs:     document.getElementById('liveTs'),
+  summary:    document.getElementById('summary'),
+  pivots:     document.getElementById('pivots'),
+  tbody:      document.getElementById('tbody'),
+};
 
-// ======= Aggregators (من 5 دقائق ← ساعة/يوم) =======
-function aggregateFrom5min(rows) {
-  // rows: [{ts: Date, close: Number}] مرتبة زمنياً
-  const hour = [], day = [];
-  let hb = null, db = null, lastH = null, lastD = null;
+/**************** أدوات مساعدة ****************/
+const fmt = (n, d=2) => (n==null||!isFinite(n)) ? '—' : Number(n).toFixed(d);
+const fmtTs = d => d instanceof Date && !isNaN(d) ? d.toISOString().replace('T',' ').slice(0,19).replace(' ','  ') : '—';
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-  for (const r of rows) {
-    const t = new Date(r.ts);
-    const dKey = t.toISOString().slice(0,10);
-    const hKey = t.toISOString().slice(0,13);
+/** Parse CSV مرن: يدعم Date,Close أو Date,Time,Open,High,Low,Close */
+function parseCSV(text){
+  const out = [];
+  const lines = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  if (!lines.length) return out;
+  const hdr = lines[0].split(',').map(h=>h.trim().toLowerCase());
+  const idx = (nameArr)=> nameArr.map(n=>hdr.indexOf(n)).find(i=>i>=0);
 
-    if (hKey !== lastH) {
-      if (hb) hour.push({...hb});
-      hb = { ts: new Date(hKey + ':00:00Z'), open:r.close, high:r.close, low:r.close, close:r.close };
-      lastH = hKey;
-    } else {
-      hb.high = Math.max(hb.high, r.close);
-      hb.low  = Math.min(hb.low , r.close);
-      hb.close = r.close;
-    }
+  const iDate = idx(['date']);
+  const iTime = idx(['time']);
+  const iDT   = idx(['datetime','timestamp','ts']);
+  const iOpen = idx(['open','o']);
+  const iHigh = idx(['high','h']);
+  const iLow  = idx(['low','l']);
+  const iClose= idx(['close','c','price']);
 
-    if (dKey !== lastD) {
-      if (db) day.push({...db});
-      db = { ts: new Date(dKey + 'T00:00:00Z'), open:r.close, high:r.close, low:r.close, close:r.close };
-      lastD = dKey;
-    } else {
-      db.high = Math.max(db.high, r.close);
-      db.low  = Math.min(db.low , r.close);
-      db.close = r.close;
-    }
+  for (let i=1;i<lines.length;i++){
+    const cols = lines[i].split(',');
+    let ts;
+    if (iDT>=0) ts = new Date(cols[iDT]);
+    else if (iDate>=0 && iTime>=0) ts = new Date(`${cols[iDate]}T${(cols[iTime]||'00:00:00')}Z`);
+    else if (iDate>=0) ts = new Date(`${cols[iDate]}T00:00:00Z`);
+    else continue;
+
+    const row = {
+      ts,
+      open : iOpen>=0  ? parseFloat(cols[iOpen])  : null,
+      high : iHigh>=0  ? parseFloat(cols[iHigh])  : null,
+      low  : iLow>=0   ? parseFloat(cols[iLow])   : null,
+      close: iClose>=0 ? parseFloat(cols[iClose]) : null,
+    };
+    if (row.close && isFinite(row.close)) out.push(row);
   }
-  if (hb) hour.push(hb);
-  if (db) day.push(db);
+  out.sort((a,b)=>a.ts-b.ts);
+  return out;
+}
+
+/** مؤشرات: EMA / RSI / MACD */
+function ema(values, period){
+  const k = 2/(period+1), out = [];
+  let prev = null;
+  values.forEach((v,i)=>{
+    if (v==null || !isFinite(v)) { out.push(null); return; }
+    if (prev==null){
+      const slice = values.slice(0,i+1).filter(x=>x!=null);
+      if (slice.length<period){ out.push(null); return; }
+      prev = slice.slice(-period).reduce((a,b)=>a+b,0)/period;
+    }
+    prev = v*k + prev*(1-k);
+    out.push(prev);
+  });
+  return out;
+}
+function rsi(values, period=14){
+  const out = Array(values.length).fill(null);
+  let gains=0, losses=0;
+  for (let i=1;i<values.length;i++){
+    const ch = values[i]-values[i-1];
+    if (i<=period){ if (ch>0) gains+=ch; else losses-=ch; if (i===period){ const rs=gains/Math.max(1e-9,losses); out[i]=100-100/(1+rs);} continue; }
+    const g = ch>0?ch:0, l = ch<0?-ch:0;
+    gains = (gains*(period-1)+g)/period;
+    losses= (losses*(period-1)+l)/period;
+    const rs=gains/Math.max(1e-9,losses);
+    out[i]=100-100/(1+rs);
+  }
+  return out;
+}
+function macd(values, fast=12, slow=26, signalP=9){
+  const emaF = ema(values, fast), emaS = ema(values, slow);
+  const macdLine = values.map((_,i)=>(emaF[i]!=null&&emaS[i]!=null)? emaF[i]-emaS[i]: null);
+  const signal = ema(macdLine, signalP);
+  const hist = macdLine.map((v,i)=> (v!=null&&signal[i]!=null)? v-signal[i] : null);
+  return {macdLine, signal, hist};
+}
+
+/** تجميع 5 دقائق → ساعة/يوم (OHLC) */
+function aggregateFrom5min(rows){
+  const hour=[], day=[]; let hb=null, db=null, lastH=null, lastD=null;
+  for (const r of rows){
+    const t = new Date(r.ts);
+    const dKey=t.toISOString().slice(0,10), hKey=t.toISOString().slice(0,13);
+    if (hKey!==lastH){ if(hb) hour.push({...hb}); hb={ts:new Date(hKey+':00:00Z'),open:r.close,high:r.close,low:r.close,close:r.close}; lastH=hKey;}
+    else { hb.high=Math.max(hb.high,r.close); hb.low=Math.min(hb.low,r.close); hb.close=r.close; }
+    if (dKey!==lastD){ if(db) day.push({...db}); db={ts:new Date(dKey+'T00:00:00Z'),open:r.close,high:r.close,low:r.close,close:r.close}; lastD=dKey;}
+    else { db.high=Math.max(db.high,r.close); db.low=Math.min(db.low,r.close); db.close=r.close; }
+  }
+  if (hb) hour.push(hb); if (db) day.push(db);
   return {hour, day};
 }
 
+/** Pivot كلاسيكي من OHLC */
 function calcPivots(o,h,l,c){
-  const P = (h + l + c) / 3;
-  return {
-    P,
-    R1: 2*P - l,
-    S1: 2*P - h,
-    R2: P + (h - l),
-    S2: P - (h - l),
-    R3: h + 2*(P - l),
-    S3: l - 2*(h - P)
-  };
+  const P=(h+l+c)/3;
+  return {P,R1:2*P-l,S1:2*P-h,R2:P+(h-l),S2:P-(h-l),R3:h+2*(P-l),S3:l-2*(h-P)};
 }
 
-/************ DOM ************/
-const els = {
-  csvUrl: document.getElementById('csvUrl'),
-  sourceSel: document.getElementById('sourceSel'),
-  runBtn: document.getElementById('runBtn'),
-  table: document.getElementById('table'),
-  summary: document.getElementById('summary'),
-  livePrice: document.getElementById('livePrice'),
-  liveTs: document.getElementById('liveTs'),
-  srBox: document.getElementById('srBox'),
-  tfMin: document.getElementById('tfMin'),
-  tfHour: document.getElementById('tfHour'),
-  tfDay: document.getElementById('tfDay'),
-  chart: document.getElementById('chart'),
-  emaFast: document.getElementById('emaFast'),
-  emaSlow: document.getElementById('emaSlow'),
-  rsiPeriod: document.getElementById('rsiPeriod'),
-};
-
-let curTF = 'm'; // m/h/d
-
-/************ أدوات ************/
-const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
-const fmt = (n)=> (n==null || !isFinite(n)) ? '—' : Number(n).toFixed(2);
-const toISO = (d)=> new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().replace('.000','');
-
-function parseCSV(txt){
-  const rows = txt.trim().split(/\r?\n/).map(r=>r.split(','));
-  return rows;
-}
-
-function rowsToSeries_DateClose(rows){
-  const out=[];
-  for (let i=1;i<rows.length;i++){
-    const d = rows[i][0];
-    const c = parseFloat(rows[i][1]);
-    if (!isFinite(c)) continue;
-    const t = new Date(d.endsWith('Z') ? d : d+'Z');
-    out.push({t, c});
-  }
-  out.sort((a,b)=>a.t-b.t);
-  return out;
-}
-
-/************ مؤشرات ************/
-function sma(arr, p){ const out=[]; let sum=0, q=[]; for(let i=0;i<arr.length;i++){ const v=arr[i]; q.push(v); sum+=v; if(q.length>p){sum-=q.shift()} out.push(q.length===p? sum/p : null) } return out }
-function ema(arr, p){
-  const k=2/(p+1), out=[]; let emaPrev;
-  for(let i=0;i<arr.length;i++){
-    const v = arr[i];
-    if (v==null||!isFinite(v)){ out.push(null); continue }
-    if (emaPrev==null){
-      const w = arr.slice(Math.max(0,i-p+1), i+1).filter(x=>isFinite(x));
-      if (w.length<p){ out.push(null); continue }
-      emaPrev = w.reduce((a,b)=>a+b,0)/w.length;
-    }
-    emaPrev = v*k + emaPrev*(1-k);
-    out.push(emaPrev);
-  }
-  return out;
-}
-function stdev(arr,p){
-  const out=[], q=[];
-  for(let i=0;i<arr.length;i++){
-    const v=arr[i]; q.push(v); if(q.length>p) q.shift();
-    if(q.length<p){ out.push(null); continue }
-    const m = q.reduce((a,b)=>a+b,0)/p;
-    const sd=Math.sqrt(q.reduce((a,b)=>a+(b-m)**2,0)/p);
-    out.push(sd);
-  }
-  return out;
-}
-function rsi(cl,p=14){
-  if (cl.length<=p) return new Array(cl.length).fill(null);
-  const out = new Array(cl.length).fill(null);
-  let gains=0, losses=0;
-  for(let i=1;i<=p;i++){ const ch=cl[i]-cl[i-1]; if(ch>0) gains+=ch; else losses-=ch; }
-  let avgG=gains/p, avgL=losses/p;
-  out[p] = avgL===0? 100 : 100 - 100/(1+avgG/avgL);
-  for(let i=p+1;i<cl.length;i++){
-    const ch=cl[i]-cl[i-1];
-    const g=Math.max(ch,0), l=Math.max(-ch,0);
-    avgG=(avgG*(p-1)+g)/p; avgL=(avgL*(p-1)+l)/p;
-    out[i] = avgL===0? 100 : 100 - 100/(1+avgG/avgL);
-  }
-  return out;
-}
-function macd(cl, fast=12, slow=26, signalP=9){
-  const eF=ema(cl,fast), eS=ema(cl,slow);
-  const line = cl.map((_,i)=> (eF[i]!=null&&eS[i]!=null)? eF[i]-eS[i] : null);
-  const signal = ema(line.map(x=>x??NaN), signalP);
-  const hist = line.map((x,i)=> (x!=null&&signal[i]!=null)? x-signal[i] : null);
-  return {line, signal, hist};
-}
-function bollinger(cl, p=20, mult=2){
-  const mid=sma(cl,p), sd=stdev(cl,p);
-  const up=cl.map((_,i)=> (mid[i]!=null&&sd[i]!=null)? mid[i]+mult*sd[i] : null);
-  const lo=cl.map((_,i)=> (mid[i]!=null&&sd[i]!=null)? mid[i]-mult*sd[i] : null);
-  return {mid, up, lo};
-}
-function pivotsClassic({high,low,close}){
-  const P=(high+low+close)/3;
-  return { P, R1:2*P-low, S1:2*P-high, R2:P+(high-low), S2:P-(high-low), R3:high+2*(P-low), S3:low-2*(high-P) };
-}
-
-/************ جلب السعر ************/
+/**************** جلب السعر الحي ****************/
 async function fetchLivePrice(){
-  // 1) لو عندك Worker يرجّع JSON: {price}
-  if (LIVE_JSON_URL) {
-    try {
+  // Worker (اختياري):
+  if (LIVE_JSON_URL){
+    try{
       const r = await fetch(LIVE_JSON_URL, {cache:'no-store'});
       const j = await r.json();
       if (j && Number(j.price)) return {price:Number(j.price), ts:new Date()};
-    } catch {}
+    }catch{}
   }
-
-  // 2) Stooq عبر البروكسي (CSV)
-  try {
+  // Stooq CSV (نأخذ آخر سطر صالح)
+  try{
     const t = await (await fetch(STOOQ_LIVE_CSV, {cache:'no-store'})).text();
-    // خُد آخر سطر غير الهيدر وغير الفارغ
-    const lines = t.split(/\r?\n/).map(s=>s.trim()).filter(s => s && !/^Symbol/i.test(s));
+    const lines = t.split(/\r?\n/).map(s=>s.trim()).filter(s=>s && !/^symbol/i.test(s));
     if (!lines.length) return {price:null, ts:new Date()};
-
-    const cols = lines[lines.length - 1].split(',');
-    // ترتيب Stooq: Symbol,Date,Time,Open,High,Low,Close,Volume
-    const closeStr = cols[6];
-    const price = parseFloat(closeStr);
-    if (isFinite(price)) {
-      const dateStr = cols[1] || '';
-      const timeStr = cols[2] || '00:00:00';
-      const ts = new Date(`${dateStr}T${timeStr}Z`);
-      return {price, ts: isNaN(ts.getTime()) ? new Date() : ts};
-    }
-  } catch {}
-
+    const last = lines[lines.length-1].split(',');
+    const price = parseFloat(last[6]);
+    const ts = new Date(`${last[1]}T${(last[2]||'00:00:00')}Z`);
+    if (isFinite(price)) return {price, ts: isNaN(ts)? new Date(): ts};
+  }catch{}
   return {price:null, ts:new Date()};
 }
 
+/**************** عرض الملخص/الدعم/الجدول ****************/
+function renderSummary(title, series){
+  const prices = series.map(r=>r.price);
+  const ef = Number(els.emaFast.value)||12, es = Number(els.emaSlow.value)||26, rp = Number(els.rsiPeriod.value)||14;
+  const emaF = ema(prices, ef), emaS = ema(prices, es), last = prices.at(-1);
+  const rsiArr = rsi(prices, rp), rsiLast = rsiArr.at(-1);
+  const {macdLine,signal,hist} = macd(prices, ef, es, 9);
+  const macdLast = macdLine.at(-1), sigLast = signal.at(-1), histLast = hist.at(-1);
 
-/************ بيانات الشارت ************/
-let dataM=[], dataH=[], dataD=[];
-let liveTimer=null, chart=null;
-
-function ensureChart(){
-  if (chart) return;
-  chart = new Chart(els.chart, {
-    type:'line',
-    data:{ datasets:[
-      {label:'السعر',   data:[], borderColor:'#4cc9f0', pointRadius:0, tension:.2},
-      {label:'EMA سريع',data:[], borderColor:'#22c55e', pointRadius:0, tension:.2, borderDash:[4,4]},
-      {label:'EMA بطيء',data:[], borderColor:'#f59e0b', pointRadius:0, tension:.2, borderDash:[6,6]},
-      {label:'BB أعلى', data:[], borderColor:'#6ee7b7', pointRadius:0, tension:.2, borderDash:[2,6]},
-      {label:'BB وسط',  data:[], borderColor:'#94a3b8', pointRadius:0, tension:.2, borderDash:[2,6]},
-      {label:'BB أسفل', data:[], borderColor:'#fca5a5', pointRadius:0, tension:.2, borderDash:[2,6]},
-    ]},
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      parsing:false,
-      scales:{
-        x:{type:'time', time:{unit:'minute'}, grid:{color:'#273449'}, ticks:{color:'#93a3b8'}},
-        y:{grid:{color:'#273449'}, ticks:{color:'#93a3b8'}}
-      },
-      plugins:{ legend:{labels:{color:'#cbd5e1'}}, tooltip:{mode:'index', intersect:false} }
-    }
-  });
-}
-function setTimeUnit(){
-  const unit = (curTF==='m')?'minute': (curTF==='h')?'hour':'day';
-  chart.options.scales.x.time.unit = unit;
-}
-
-function updateChart(rows){
-  const closes = rows.map(r=>r.c);
-  const fast = Number(els.emaFast.value)||12;
-  const slow = Number(els.emaSlow.value)||26;
-  const rsiP = Number(els.rsiPeriod.value)||14;
-
-  const eF = ema(closes, fast);
-  const eS = ema(closes, slow);
-  const bb = bollinger(closes, 20, 2);
-  const points = rows.map(r=>({x:r.t, y:r.c}));
-
-  chart.data.datasets[0].data = points;
-  chart.data.datasets[1].data = rows.map((r,i)=> eF[i]!=null? {x:r.t,y:eF[i]} : null).filter(Boolean);
-  chart.data.datasets[2].data = rows.map((r,i)=> eS[i]!=null? {x:r.t,y:eS[i]} : null).filter(Boolean);
-  chart.data.datasets[3].data = rows.map((r,i)=> bb.up[i]!=null? {x:r.t,y:bb.up[i]} : null).filter(Boolean);
-  chart.data.datasets[4].data = rows.map((r,i)=> bb.mid[i]!=null? {x:r.t,y:bb.mid[i]} : null).filter(Boolean);
-  chart.data.datasets[5].data = rows.map((r,i)=> bb.lo[i]!=null? {x:r.t,y:bb.lo[i]} : null).filter(Boolean);
-  chart.update('none');
-
-  // صناديق الملخص + الجدول
-  updateSummary(rows, {rsiP, fast, slow});
-  renderTable(rows);
-}
-
-function computeSignals(rows, {rsiP, fast, slow}){
-  const closes = rows.map(r=>r.c);
-  const _rsi = rsi(closes, rsiP);
-  const _macd = macd(closes, fast, slow, 9);
-  const last = rows[rows.length-1];
-
-  const ef = ema(closes, fast)[closes.length-1];
-  const es = ema(closes, slow)[closes.length-1];
-
-  let bias='حيادي', notes=[];
-  if (last && ef!=null && es!=null){
-    if (last.c>ef && ef>es) { bias='شراء'; notes.push('ترند صاعد (سعر>EMA سريع>EMA بطيء)'); }
-    if (last.c<ef && ef<es) { bias='بيع';  notes.push('ترند هابط (سعر<EMA سريع<EMA بطيء)'); }
+  // إشارة بسيطة:
+  let signalTxt='حيادي', cls='warn';
+  if (emaF.at(-1)!=null && emaS.at(-1)!=null){
+    if (emaF.at(-1)>emaS.at(-1) && histLast>0 && rsiLast>50) { signalTxt='شراء'; cls='good'; }
+    if (emaF.at(-1)<emaS.at(-1) && histLast<0 && rsiLast<50) { signalTxt='بيع';   cls='bad';  }
   }
-  const i=closes.length-1;
-  if (_rsi[i]!=null){
-    if (_rsi[i]>70) notes.push('تشبّع شرائي RSI>70');
-    if (_rsi[i]<30) notes.push('تشبّع بيعي RSI<30');
-  }
-  if (_macd.signal[i]!=null && _macd.signal[i-1]!=null && _macd.line[i]!=null && _macd.line[i-1]!=null){
-    const prev = _macd.line[i-1]-_macd.signal[i-1];
-    const now  = _macd.line[i]-_macd.signal[i];
-    if (prev<=0 && now>0) notes.push('تقاطع MACD صعودي');
-    if (prev>=0 && now<0) notes.push('تقاطع MACD هبوطي');
-  }
-  return {bias, notes, rsi: _rsi[i], macdLine:_macd.line[i], macdSignal:_macd.signal[i], emaFast:ef, emaSlow:es};
-}
 
-function updateSummary(rows, opts){
-  const s = computeSignals(rows, opts);
   els.summary.innerHTML = `
-    <div class="card">
-      <div class="signal">الإطار: <span class="pill">${curTF==='m'?'دقيقة':curTF==='h'?'ساعة':'يوم'}</span></div>
-      <div class="signal">الإشارة: <strong class="${s.bias==='شراء'?'good':s.bias==='بيع'?'bad':'warn'}">${s.bias}</strong></div>
-      <div class="signal">RSI: ${fmt(s.rsi)} | MACD: ${fmt(s.macdLine)} / ${fmt(s.macdSignal)}</div>
-      <div class="signal">EMA سريع/بطيء: ${fmt(s.emaFast)} / ${fmt(s.emaSlow)}</div>
-      <ul class="signal" style="margin:6px 18px">${s.notes.map(n=>`<li>${n}</li>`).join('')}</ul>
+    <div class="card" style="background:#0b1220;border:1px solid #253041">
+      <div><span class="pill">${title}</span></div>
+      <div class="${cls}" style="font-size:22px;margin-top:6px"><b>${signalTxt}</b></div>
+      <div class="grid" style="margin-top:8px">
+        <div><b>السعر</b><br>${fmt(last)}</div>
+        <div><b>EMA(${ef})</b><br>${fmt(emaF.at(-1))}</div>
+        <div><b>EMA(${es})</b><br>${fmt(emaS.at(-1))}</div>
+        <div><b>RSI(${rp})</b><br>${fmt(rsiLast,1)}</div>
+        <div><b>MACD</b><br>${fmt(macdLast,3)}</div>
+        <div><b>Signal</b><br>${fmt(sigLast,3)}</div>
+        <div><b>Hist</b><br>${fmt(histLast,3)}</div>
+      </div>
     </div>
   `;
 }
-
-function renderTable(rows){
-  const head = ['Date','Close'];
-  els.table.querySelector('thead').innerHTML = `<tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr>`;
-  const last50 = rows.slice(-50);
-  els.table.querySelector('tbody').innerHTML = last50.map(r=>(
-    `<tr><td>${toISO(r.t)}</td><td>${fmt(r.c)}</td></tr>`
-  )).join('');
+function renderPivots(p){
+  if (!p){ els.pivots.innerHTML='—'; return; }
+  els.pivots.innerHTML = `
+    <div><b>P</b><br>${fmt(p.P)}</div>
+    <div><b>R1</b><br>${fmt(p.R1)}</div>
+    <div><b>R2</b><br>${fmt(p.R2)}</div>
+    <div><b>R3</b><br>${fmt(p.R3)}</div>
+    <div><b>S1</b><br>${fmt(p.S1)}</div>
+    <div><b>S2</b><br>${fmt(p.S2)}</div>
+    <div><b>S3</b><br>${fmt(p.S3)}</div>
+  `;
+}
+function renderTable(series){
+  const rows = series.slice(-50).reverse().map(r=>`<tr><td>${fmtTs(r.time)}</td><td>${fmt(r.price)}</td></tr>`).join('');
+  els.tbody.innerHTML = rows || '<tr><td colspan="2">لا يوجد بيانات</td></tr>';
 }
 
-/************ Pivot S/R ************/
-async function updateSR(){
-  try{
-    const d = await fetchDailyOHLC();
-    if (!d?.prev){ els.srBox.textContent='—'; return; }
-    const p = pivotsClassic(d.prev);
-    els.srBox.innerHTML = `
-      <span class="pill">Pivot S/R (يومي)</span>
-      <div style="margin-top:8px">
-        S3: <strong>${fmt(p.S3)}</strong> · S2: <strong>${fmt(p.S2)}</strong> · S1: <strong>${fmt(p.S1)}</strong> ·
-        P: <strong>${fmt(p.P)}</strong> ·
-        R1: <strong>${fmt(p.R1)}</strong> · R2: <strong>${fmt(p.R2)}</strong> · R3: <strong>${fmt(p.R3)}</strong>
-      </div>`;
-  }catch{ els.srBox.textContent='—'; }
-}
-
-/************ Minute stream ************/
+/**************** منطق الإطارات ****************/
+let minuteSeries = []; // لآخر قراءات السعر الحي
 async function tickLive(){
   const {price, ts} = await fetchLivePrice();
-  if (price!=null){
-    const tKey = new Date(Date.UTC(ts.getUTCFullYear(), ts.getUTCMonth(), ts.getUTCDate(), ts.getUTCHours(), ts.getUTCMinutes(), 0));
-    if (dataM.length && Math.abs(dataM[dataM.length-1].t - tKey) < 60*1000){
-      dataM[dataM.length-1] = {t:tKey, c:price};
-    } else {
-      dataM.push({t:tKey, c:price});
-      if (dataM.length>720) dataM = dataM.slice(-720); // آخر 12 ساعة
-    }
+  if (price){
     els.livePrice.textContent = fmt(price);
-    els.liveTs.textContent = toISO(ts);
-    if (curTF==='m' && chart) updateChart(dataM);
+    els.liveTs.textContent = fmtTs(ts);
+    // دُخلي على السلسلة (max 300 نقطة تقريبًا)
+    const last = minuteSeries.at(-1);
+    if (!last || Math.abs((ts - last.time)/1000) >= 55) {
+      minuteSeries.push({time:ts, price});
+      if (minuteSeries.length>300) minuteSeries.shift();
+      renderSummary('دقيقة (حي)', minuteSeries);
+      renderTable(minuteSeries);
+    } else {
+      // نفس الدقائق: حدّث آخر نقطة
+      minuteSeries[minuteSeries.length-1].price = price;
+      renderSummary('دقيقة (حي)', minuteSeries);
+      renderTable(minuteSeries);
+    }
   }
 }
 
-/************ تحميل CSVات الإطار الأعلى ************/
-async function loadHourlyDaily(){
-  // حاول تحميل الساعي/اليومي من الروابط، لو فشل نولّدهم من الدقيقة لاحقًا
-  try{
-    const txtH = await (await fetch(HOURLY_CSV_URL, {cache:'no-store'})).text();
-    dataH = rowsToSeries_DateClose(parseCSV(txtH));
-  }catch{ dataH=[] }
-  try{
-    const txtD = await (await fetch(DAILY_CSV_URL, {cache:'no-store'})).text();
-    dataD = rowsToSeries_DateClose(parseCSV(txtD));
-  }catch{ dataD=[] }
+async function loadCSV(url){
+  const t = await (await fetch(url,{cache:'no-store'})).text();
+  const rows = parseCSV(t);
+  return rows.map(r=>({time:r.ts, price:r.close, open:r.open, high:r.high, low:r.low, close:r.close}));
 }
 
-/************ تبديل الإطار ************/
-function setTF(tf){
-  curTF = tf;
-  setTimeUnit();
-  if (tf==='m')       updateChart(dataM);
-  else if (tf==='h')  updateChart(dataH.length? dataH : aggregateToHour(dataM));
-  else                updateChart(dataD.length? dataD : aggregateToDay(dataM));
-}
-function aggregateToHour(rows){
-  // نأخذ آخر قيمة بكل ساعة
-  const map = new Map();
-  rows.forEach(r=>{
-    const k = new Date(Date.UTC(r.t.getUTCFullYear(), r.t.getUTCMonth(), r.t.getUTCDate(), r.t.getUTCHours(), 0, 0)).toISOString();
-    map.set(k, r.c);
-  });
-  return Array.from(map.entries()).map(([k,c])=>({t:new Date(k), c}));
-}
-function aggregateToDay(rows){
-  const map = new Map();
-  rows.forEach(r=>{
-    const k = new Date(Date.UTC(r.t.getUTCFullYear(), r.t.getUTCMonth(), r.t.getUTCDate(), 0,0,0)).toISOString();
-    map.set(k, r.c);
-  });
-  return Array.from(map.entries()).map(([k,c])=>({t:new Date(k), c}));
-}
-
-/************ تشغيل عام ************/
-async function boot(){
-  ensureChart();
-  await loadHourlyDaily();
-  await updateSR();
-
-  // أول جلب حي + مؤقّت كل 60 ثانية
+async function runMinute(){
+  //立即 تحديث ومن ثم كل 60 ثانية
   await tickLive();
-  liveTimer && clearInterval(liveTimer);
-  liveTimer = setInterval(tickLive, 60_000);
-
-  // افتراضي على “دقيقة”
-  setTF('m');
 }
-boot();
+async function runHour(url){
+  // إذا أُعطي URL: استعمله، وإلا جرّبي افتراضي
+  const u = url || DEFAULT_HOURLY;
+  const rows = await loadCSV(u);
+  renderSummary('ساعة', rows);
+  renderTable(rows);
+  // Pivot نحاول من يومي جاهز، أو من تجميع 5 دقايق إذا متوفر
+  try{
+    const t = await (await fetch(DEFAULT_DAILY,{cache:'no-store'})).text();
+    const daily = parseCSV(t);
+    const d = daily.at(-1);
+    if (d && d.open!=null && d.high!=null) renderPivots(calcPivots(d.open,d.high,d.low,d.close));
+    else renderPivots(null);
+  }catch{ renderPivots(null); }
+}
+async function runDay(url){
+  const u = url || DEFAULT_DAILY;
+  const rows = await loadCSV(u);
+  renderSummary('يوم', rows);
+  renderTable(rows);
 
-/************ زر “حساب الإشارات الآن” للـCSV اليدوي ************/
-// إذا كان الملف هو File الـ 5 دقائق:
-if (/XAUUSD_5min\.csv$/i.test(url)) {
-  // اجمع 5 دقائق → ساعة ويوم
-  const agg = aggregateFrom5min(rows5);
-
-  // 1) إشارات الإطار "ساعة" من agg.hour (استعملي نفس دالة حساب المؤشرات اللي بتطبّقيها عادةً)
-  computeAndRenderSignals('hour', agg.hour.map(r => ({ time: r.ts, price: r.close })));
-
-  // 2) Pivot من آخر يوم
-  const lastDay = agg.day.at(-1);
-  if (lastDay) {
-    const piv = calcPivots(lastDay.open, lastDay.high, lastDay.low, lastDay.close);
-    renderPivots(piv);  // استعملي نفس دالة عرض الدعم/المقاومة عندك
+  // إذا كان الCSV اليومي Close فقط: جربّي Pivot من 5 دقائق بالتجميع
+  let piv = null;
+  const last = rows.at(-1);
+  if (!last || last.open==null){
+    try{
+      const five = await loadCSV(DEFAULT_5MIN);
+      const agg = aggregateFrom5min(five);
+      const ld = agg.day.at(-1);
+      if (ld) piv = calcPivots(ld.open, ld.high, ld.low, ld.close);
+    }catch{}
   }
-
-  // إذا ما بدّك تعملي شي للشارت، تجاهلي الرسم—بس خلي الملخص/الجدول ينعرضوا
-  return; // خلّصنا هالحالة
+  renderPivots(piv);
 }
+
+/**************** حفظ رابط CSV وتشغيل الأزرار ****************/
+els.csvUrl.value = localStorage.getItem('csv_url') || '';
+els.csvUrl.addEventListener('change', ()=> localStorage.setItem('csv_url', els.csvUrl.value.trim()));
 
 els.runBtn.addEventListener('click', async ()=>{
   const src = els.sourceSel.value;
-  if (src!=='csv'){
-    // إعادة رسم بالإعدادات الحالية فقط
-    setTF(curTF); 
-    return;
-  }
   const url = (els.csvUrl.value||'').trim();
-  if (!url){ alert('إلصق رابط CSV بصيغة Date,Close'); return; }
-  try{
-    const txt = await (await fetch(url, {cache:'no-store'})).text();
-    const rows = rowsToSeries_DateClose(parseCSV(txt));
-    // اعرض الملف في الجدول والشارت (نفس الإطار الحالي)
-    if (!rows.length){ alert('CSV فارغ أو غير مدعوم. لازم رأس الأعمدة: Date,Close'); return; }
-    if (curTF==='m') dataM = rows; else if (curTF==='h') dataH = rows; else dataD = rows;
-    updateChart(rows);
-  }catch(e){
-    alert('تعذّر تحميل CSV'); 
+  if (src==='csv' && !url){ alert('من فضلك ألصق رابط CSV'); return; }
+
+  if (src==='live'){ await runMinute(); }
+  else { // csv
+    if (/5min\.csv$/i.test(url)) {
+      const five = await loadCSV(url);
+      const agg = aggregateFrom5min(five);
+      renderSummary('مُشتق من 5 دقائق (ساعة)', agg.hour.map(r=>({time:r.ts, price:r.close})));
+      renderTable(agg.hour.map(r=>({time:r.ts, price:r.close})));
+      const ld = agg.day.at(-1); renderPivots(ld? calcPivots(ld.open,ld.high,ld.low,ld.close): null);
+    } else if (/hour/i.test(url)) {
+      await runHour(url);
+    } else { // اعتبره يومي
+      await runDay(url);
+    }
   }
 });
+els.minuteBtn.addEventListener('click', runMinute);
+els.hourBtn.addEventListener('click', ()=> runHour( (els.csvUrl.value||'').trim() || DEFAULT_HOURLY ));
+els.dayBtn.addEventListener('click',  ()=> runDay ( (els.csvUrl.value||'').trim() || DEFAULT_DAILY  ));
 
-/************ أزرار الإطارات ************/
-if (els.tfMin && els.tfHour && els.tfDay){
-  const act = (b)=>{ [els.tfMin,els.tfHour,els.tfDay].forEach(x=>x.classList.remove('good')); b.classList.add('good'); };
-  els.tfMin.onclick  = ()=>{ act(els.tfMin);  setTF('m'); };
-  els.tfHour.onclick = ()=>{ act(els.tfHour); setTF('h'); };
-  els.tfDay.onclick  = ()=>{ act(els.tfDay);  setTF('d'); };
-  // فعّل “دقيقة” افتراضي
-  act(els.tfMin);
-}
+// تفعيل تحديث السعر الحي كل 60 ثانية تلقائيًا
+tickLive();
+setInterval(tickLive, 60_000);
