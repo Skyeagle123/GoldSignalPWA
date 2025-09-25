@@ -3,10 +3,10 @@ const LS_KEY = 'gold_csv_url';
 const TF = { '5m':'5m', '1h':'1h', '1d':'1d' };
 let currentTf = TF['5m'];
 
-// مصادر السعر الحي (مع بروكسي CORS)
+// مصادر السعر الحي (مع بروكسي CORS + كسر كاش)
 const LIVE_SOURCES = {
-  metals: 'https://r.jina.ai/https://api.metals.live/v1/spot/gold', // [[ts,price],...]
-  stooq : 'https://r.jina.ai/http://stooq.com/q/l/?s=xauusd&f=sd2t2ohlc&e=csv' // Symbol,Date,Time,Open,High,Low,Close
+  metals: () => `https://r.jina.ai/https://api.metals.live/v1/spot/gold?_=${Date.now()}`,
+  stooq : () => `https://r.jina.ai/http://stooq.com/q/l/?s=xauusd&f=sd2t2ohlc&e=csv&_=${Date.now()}`
 };
 const LIVE_POLL_MS = 1000; // كل ثانية
 
@@ -45,9 +45,7 @@ function repoBase() {
   const basePath = path.endsWith('/') ? path : path.replace(/[^/]*$/, '');
   return location.origin + basePath;
 }
-function defaultCsvUrl() {
-  return new URL('XAUUSD_5min.csv', repoBase()).href;
-}
+function defaultCsvUrl() { return new URL('XAUUSD_5min.csv', repoBase()).href; }
 function saveCsv(v){ try{ localStorage.setItem(LS_KEY, v||''); }catch{} }
 function loadCsv(){ try{ return localStorage.getItem(LS_KEY) || ''; }catch{ return ''; } }
 function pad2(n){ return n<10?'0'+n:''+n; }
@@ -55,9 +53,7 @@ function fmtIso(d){
   return d.getUTCFullYear()+'-'+pad2(d.getUTCMonth()+1)+'-'+pad2(d.getUTCDate())+
          ' '+pad2(d.getUTCHours())+':'+pad2(d.getUTCMinutes())+':'+pad2(d.getUTCSeconds())+'.000';
 }
-function dayKeyUTC(d){
-  return d.getUTCFullYear()+'-'+pad2(d.getUTCMonth()+1)+'-'+pad2(d.getUTCDate());
-}
+function dayKeyUTC(d){ return d.getUTCFullYear()+'-'+pad2(d.getUTCMonth()+1)+'-'+pad2(d.getUTCDate()); }
 
 /*************** تحميل CSV ***************/
 async function fetch5mCsvText() {
@@ -174,9 +170,9 @@ function computeDailyPivotFrom5m(raw5m){
 let liveInFlight = false;
 
 async function fetchLiveFromMetals(){
-  const r = await fetch(LIVE_SOURCES.metals, { cache:'no-store' });
+  const r = await fetch(LIVE_SOURCES.metals(), { cache:'no-store' });
   if (!r.ok) throw new Error('metals.live HTTP '+r.status);
-  const data = await r.json(); // شكلها: [[ts,price],...]
+  const data = await r.json(); // [[ts,price],...]
   if (!Array.isArray(data) || data.length===0 || !Array.isArray(data[data.length-1])) {
     throw new Error('metals.live unexpected');
   }
@@ -185,9 +181,8 @@ async function fetchLiveFromMetals(){
   const t = isFinite(+ts) ? new Date(+ts*1000) : new Date();
   return { price: +(+price).toFixed(2), iso: fmtIso(t), source:'Metals.live' };
 }
-
 async function fetchLiveFromStooq(){
-  const r = await fetch(LIVE_SOURCES.stooq, { cache:'no-store' });
+  const r = await fetch(LIVE_SOURCES.stooq(), { cache:'no-store' });
   if (!r.ok) throw new Error('stooq HTTP '+r.status);
   const txt = await r.text();
   const lines = txt.trim().split(/\r?\n/);
@@ -200,25 +195,22 @@ async function fetchLiveFromStooq(){
   const iso = (date && time) ? (date+' '+time) : new Date().toISOString().replace('T',' ').slice(0,19);
   return { price:+close.toFixed(2), iso, source:'Stooq' };
 }
-
 async function updateLive(){
   if (liveInFlight) return;
   liveInFlight = true;
   try{
     let live = null;
-    // جرّب Metals.live أولاً، بعدها Stooq
     try { live = await fetchLiveFromMetals(); }
     catch { live = await fetchLiveFromStooq(); }
     if (live){
       els.livePrice.textContent = live.price.toFixed(2);
       els.liveTime.textContent  = live.iso;
-      // الملخص يبقى من CSV؛ إذا فاضي حط آخر إشارة
       if (!els.liveSummary.textContent || els.liveSummary.textContent==='—') {
         els.liveSummary.textContent = lastSignal || '—';
       }
     }
   }catch(e){
-    // Fallback: آخر قيمة من CSV
+    // Fallback: آخر CSV
     if (lastCsvPoint){
       els.livePrice.textContent = lastCsvPoint.close.toFixed(2);
       els.liveTime.textContent  = fmtIso(lastCsvPoint.t);
@@ -275,19 +267,21 @@ async function run(){
       if (last){ els.livePrice.textContent = last.close.toFixed(2); els.liveTime.textContent = fmtIso(last.t); }
     }
 
-    // جدول آخر 50 صف (الأحدث أولاً)
+    // ******** ترتيب الأعمدة لضبط “الإشارة” ********
+    // هيك الترتيب النهائي: السعر | MACD | RSI | الإشارة | EMA F | التاريخ
     const body = els.table; body.innerHTML = '';
     const take = rows.slice(-50).reverse();
     for (const r of take){
-      const tr = document.createElement('tr');
       const sigR = decideSignal(r);
+      const cls = sigR==='شراء'?'good':(sigR==='بيع'?'bad':'warn');
+      const tr = document.createElement('tr');
       tr.innerHTML =
-        `<td>${r.close.toFixed(2)}</td>`+
-        `<td class="${sigR==='شراء'?'good':sigR==='بيع'?'bad':'warn'}">${sigR}</td>`+
-        `<td>${r.rsi ?? '—'}</td>`+
-        `<td>${r.macd ?? '—'}</td>`+
-        `<td>${r.emaF?.toFixed(2) ?? '—'}</td>`+
-        `<td>${fmtIso(r.t)}</td>`;
+        `<td>${r.close.toFixed(2)}</td>`+                     // السعر
+        `<td>${r.macd ?? '—'}</td>`+                          // MACD
+        `<td>${r.rsi ?? '—'}</td>`+                           // RSI
+        `<td class="${cls}">${sigR}</td>`+                    // الإشارة
+        `<td>${r.emaF?.toFixed(2) ?? '—'}</td>`+              // EMA F
+        `<td>${fmtIso(r.t)}</td>`;                            // التاريخ
       body.appendChild(tr);
     }
   }catch(e){
@@ -319,6 +313,6 @@ async function run(){
   markTf();
   run();                         // تحليل CSV (مؤشرات + جدول + Pivot)
   updateLive();                  // السعر الحي فوراً
-  setInterval(updateLive, LIVE_POLL_MS); // تحديث السعر الحي كل ثانية
+  setInterval(updateLive, LIVE_POLL_MS); // كل ثانية
   setInterval(run, 60_000);      // تحديث التحليلات من CSV كل دقيقة
 })();
