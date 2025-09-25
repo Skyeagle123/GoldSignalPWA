@@ -25,6 +25,9 @@
     th,td{border-bottom:1px solid #273449;padding:8px;text-align:center;white-space:nowrap}
     .good{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
     .muted{color:var(--muted)}
+    .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .lvl{border:1px solid var(--border);border-radius:12px;padding:10px;text-align:center}
+    .big{font-size:22px;font-weight:700}
   </style>
 </head>
 <body>
@@ -50,7 +53,9 @@
             <button class="pill" id="tf60">ساعة</button>
             <button class="pill" id="tfD">يوم</button>
           </div>
-          <div class="muted" style="margin-top:6px">إذا تركت الرابط فاضي رح نستخدم <code>XAUUSD_5min.csv</code> ونحوّل داخليًا إلى ساعة/يوم عند الحاجة.</div>
+          <div class="muted" style="margin-top:6px">
+            إذا تركت الرابط فاضي رح نستخدم <code>XAUUSD_5min.csv</code> ونحوّل داخليًا إلى ساعة/يوم عند الحاجة.
+          </div>
         </div>
         <div class="col">
           <label>إعدادات المؤشرات:</label>
@@ -65,15 +70,28 @@
       <div class="row" style="margin-top:12px">
         <div class="col"><button id="runBtn">حساب الإشارات الآن</button></div>
       </div>
-      <div class="muted" style="margin-top:6px">يُحدّث نفسه كل 60 ثانية ويلتقط آخر صف من ملف الـ CSV.</div>
+      <div class="muted" style="margin-top:6px">يُحدّث نفسه كل <b>30</b> ثانية ويلتقط آخر صف من ملف الـ CSV.</div>
     </div>
 
     <div class="card">
       <h3 style="margin-top:0">السعر الحي</h3>
       <div class="row">
-        <div class="col"><div class="muted">السعر الآن:</div><div id="livePrice" style="font-size:28px;font-weight:700">—</div></div>
+        <div class="col"><div class="muted">السعر الآن:</div><div id="livePrice" class="big">—</div></div>
         <div class="col"><div class="muted">آخر تحديث:</div><div id="liveTime">—</div></div>
         <div class="col"><div class="muted">الملخّص:</div><div id="liveSummary" style="font-weight:700">—</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin:0 0 12px 0">الدعم والمقاومة (Pivot)</h3>
+      <div class="grid3">
+        <div class="lvl"><div class="muted">R3</div><div id="r3" class="big">—</div></div>
+        <div class="lvl"><div class="muted">R2</div><div id="r2" class="big">—</div></div>
+        <div class="lvl"><div class="muted">R1</div><div id="r1" class="big">—</div></div>
+        <div class="lvl" style="grid-column:1 / -1"><div class="muted">Pivot</div><div id="pp" class="big">—</div></div>
+        <div class="lvl"><div class="muted">S1</div><div id="s1" class="big">—</div></div>
+        <div class="lvl"><div class="muted">S2</div><div id="s2" class="big">—</div></div>
+        <div class="lvl"><div class="muted">S3</div><div id="s3" class="big">—</div></div>
       </div>
     </div>
 
