@@ -123,35 +123,37 @@ function pivotsClassic({high,low,close}){
 
 /************ جلب السعر ************/
 async function fetchLivePrice(){
-  // 1) Worker JSON
+  // 1) لو عندك Worker يرجّع JSON: {price}
   if (LIVE_JSON_URL) {
-    try{
+    try {
       const r = await fetch(LIVE_JSON_URL, {cache:'no-store'});
       const j = await r.json();
       if (j && Number(j.price)) return {price:Number(j.price), ts:new Date()};
-    }catch{}
+    } catch {}
   }
-  // 2) Stooq CSV
-  try{
+
+  // 2) Stooq عبر البروكسي (CSV)
+  try {
     const t = await (await fetch(STOOQ_LIVE_CSV, {cache:'no-store'})).text();
-    const line = (t.split('\n')[1]||'').trim();
-    const cols = line.split(',');
-    const p = parseFloat(cols[6]);
-    if (isFinite(p)) return {price:p, ts:new Date()};
-  }catch{}
+    // خُد آخر سطر غير الهيدر وغير الفارغ
+    const lines = t.split(/\r?\n/).map(s=>s.trim()).filter(s => s && !/^Symbol/i.test(s));
+    if (!lines.length) return {price:null, ts:new Date()};
+
+    const cols = lines[lines.length - 1].split(',');
+    // ترتيب Stooq: Symbol,Date,Time,Open,High,Low,Close,Volume
+    const closeStr = cols[6];
+    const price = parseFloat(closeStr);
+    if (isFinite(price)) {
+      const dateStr = cols[1] || '';
+      const timeStr = cols[2] || '00:00:00';
+      const ts = new Date(`${dateStr}T${timeStr}Z`);
+      return {price, ts: isNaN(ts.getTime()) ? new Date() : ts};
+    }
+  } catch {}
+
   return {price:null, ts:new Date()};
 }
 
-async function fetchDailyOHLC(){
-  const txt = await (await fetch(STOOQ_DAILY_OHLC, {cache:'no-store'})).text();
-  const rows = parseCSV(txt); // Date,Open,High,Low,Close
-  if (rows.length<3) return null;
-  const prev = rows[rows.length-2], last = rows[rows.length-1];
-  return {
-    prev: { date:prev[0], open:+prev[1], high:+prev[2], low:+prev[3], close:+prev[4] },
-    last: { date:last[0], open:+last[1], high:+last[2], low:+last[3], close:+last[4] },
-  };
-}
 
 /************ بيانات الشارت ************/
 let dataM=[], dataH=[], dataD=[];
