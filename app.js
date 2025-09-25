@@ -3,8 +3,12 @@ const LS_KEY = 'gold_csv_url';
 const TF = { '5m':'5m', '1h':'1h', '1d':'1d' };
 let currentTf = TF['5m'];
 
-// مصدر السعر الحي المستقل (Stooq) عبر بروكسي CORS
-const STQ_URL = 'https://r.jina.ai/http://stooq.com/q/l/?s=xauusd&f=sd2t2ohlc&e=csv';
+// مصادر السعر الحي (مع بروكسي CORS)
+const LIVE_SOURCES = {
+  metals: 'https://r.jina.ai/https://api.metals.live/v1/spot/gold', // [[ts,price],...]
+  stooq : 'https://r.jina.ai/http://stooq.com/q/l/?s=xauusd&f=sd2t2ohlc&e=csv' // Symbol,Date,Time,Open,High,Low,Close
+};
+const LIVE_POLL_MS = 1000; // كل ثانية
 
 const els = {
   csv: document.getElementById('csvUrl'),
@@ -32,7 +36,8 @@ const els = {
   table: document.getElementById('dataTable').querySelector('tbody'),
 };
 
-let lastSignal = '—'; // آخر إشارة من CSV
+let lastSignal = '—';      // آخر إشارة من CSV
+let lastCsvPoint = null;   // آخر نقطة محسوبة من الـCSV (للفallback)
 
 /*************** أدوات ***************/
 function repoBase() {
@@ -41,11 +46,10 @@ function repoBase() {
   return location.origin + basePath;
 }
 function defaultCsvUrl() {
-  // XAUUSD_5min.csv بجانب index.html
   return new URL('XAUUSD_5min.csv', repoBase()).href;
 }
-function saveCsv(v){ localStorage.setItem(LS_KEY, v||''); }
-function loadCsv(){ return localStorage.getItem(LS_KEY) || ''; }
+function saveCsv(v){ try{ localStorage.setItem(LS_KEY, v||''); }catch{} }
+function loadCsv(){ try{ return localStorage.getItem(LS_KEY) || ''; }catch{ return ''; } }
 function pad2(n){ return n<10?'0'+n:''+n; }
 function fmtIso(d){
   return d.getUTCFullYear()+'-'+pad2(d.getUTCMonth()+1)+'-'+pad2(d.getUTCDate())+
@@ -57,7 +61,7 @@ function dayKeyUTC(d){
 
 /*************** تحميل CSV ***************/
 async function fetch5mCsvText() {
-  const custom = (els.csv.value || '').trim();
+  const custom = (els.csv?.value || '').trim();
   const url = custom || defaultCsvUrl();
   const bust = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
   const r = await fetch(bust, { cache: 'no-store' });
@@ -166,32 +170,60 @@ function computeDailyPivotFrom5m(raw5m){
   return { P:fx(P), R1:fx(R1), R2:fx(R2), R3:fx(R3), S1:fx(S1), S2:fx(S2), S3:fx(S3) };
 }
 
-/*************** السعر الحي المستقل (كل ثانية) ***************/
+/*************** السعر الحي: مصادر متعددة ***************/
 let liveInFlight = false;
+
+async function fetchLiveFromMetals(){
+  const r = await fetch(LIVE_SOURCES.metals, { cache:'no-store' });
+  if (!r.ok) throw new Error('metals.live HTTP '+r.status);
+  const data = await r.json(); // شكلها: [[ts,price],...]
+  if (!Array.isArray(data) || data.length===0 || !Array.isArray(data[data.length-1])) {
+    throw new Error('metals.live unexpected');
+  }
+  const [ts, price] = data[data.length-1];
+  if (!isFinite(price)) throw new Error('metals.live price N/A');
+  const t = isFinite(+ts) ? new Date(+ts*1000) : new Date();
+  return { price: +(+price).toFixed(2), iso: fmtIso(t), source:'Metals.live' };
+}
+
 async function fetchLiveFromStooq(){
+  const r = await fetch(LIVE_SOURCES.stooq, { cache:'no-store' });
+  if (!r.ok) throw new Error('stooq HTTP '+r.status);
+  const txt = await r.text();
+  const lines = txt.trim().split(/\r?\n/);
+  if (lines.length<2) throw new Error('stooq no data');
+  const parts = lines[1].split(',');
+  const close = Number(parts[6]);
+  const date = parts[1] || '';
+  const time = parts[2] || '';
+  if (!isFinite(close)) throw new Error('stooq price N/A');
+  const iso = (date && time) ? (date+' '+time) : new Date().toISOString().replace('T',' ').slice(0,19);
+  return { price:+close.toFixed(2), iso, source:'Stooq' };
+}
+
+async function updateLive(){
   if (liveInFlight) return;
   liveInFlight = true;
   try{
-    const r = await fetch(STQ_URL, { cache:'no-store' });
-    if (!r.ok) throw new Error('HTTP '+r.status);
-    const txt = await r.text();
-    // CSV: Symbol,Date,Time,Open,High,Low,Close
-    const lines = txt.trim().split(/\r?\n/);
-    if (lines.length<2) throw new Error('no data');
-    const parts = lines[1].split(',');
-    const close = Number(parts[6]);
-    const date = parts[1] || '';
-    const time = parts[2] || '';
-    if (isFinite(close)) {
-      els.livePrice.textContent = close.toFixed(2);
-      els.liveTime.textContent = (date && time) ? (date+' '+time) : new Date().toISOString().replace('T',' ').slice(0,19);
-      // الملخص يبقى من CSV (lastSignal)
+    let live = null;
+    // جرّب Metals.live أولاً، بعدها Stooq
+    try { live = await fetchLiveFromMetals(); }
+    catch { live = await fetchLiveFromStooq(); }
+    if (live){
+      els.livePrice.textContent = live.price.toFixed(2);
+      els.liveTime.textContent  = live.iso;
+      // الملخص يبقى من CSV؛ إذا فاضي حط آخر إشارة
       if (!els.liveSummary.textContent || els.liveSummary.textContent==='—') {
         els.liveSummary.textContent = lastSignal || '—';
       }
     }
   }catch(e){
-    console.warn('Live fetch failed:', e.message);
+    // Fallback: آخر قيمة من CSV
+    if (lastCsvPoint){
+      els.livePrice.textContent = lastCsvPoint.close.toFixed(2);
+      els.liveTime.textContent  = fmtIso(lastCsvPoint.t);
+    }
+    console.warn('Live failed:', e.message);
   }finally{
     liveInFlight = false;
   }
@@ -199,16 +231,17 @@ async function fetchLiveFromStooq(){
 
 /*************** واجهة ***************/
 function markTf(){
-  [els.tf5,els.tf60,els.tfD].forEach(b=>b.classList.remove('active'));
-  if (currentTf===TF['5m']) els.tf5.classList.add('active');
-  else if (currentTf===TF['1h']) els.tf60.classList.add('active');
-  else els.tfD.classList.add('active');
+  [els.tf5,els.tf60,els.tfD].forEach(b=>b?.classList.remove('active'));
+  if (currentTf===TF['5m']) els.tf5?.classList.add('active');
+  else if (currentTf===TF['1h']) els.tf60?.classList.add('active');
+  else els.tfD?.classList.add('active');
 }
 
 async function run(){
   try{
     const txt = await fetch5mCsvText();
     const raw5m = parseCsv(txt);
+    lastCsvPoint = raw5m[raw5m.length-1] || null;
 
     // Pivot من 5 دقائق
     const piv = computeDailyPivotFrom5m(raw5m);
@@ -222,9 +255,9 @@ async function run(){
 
     // تحويل للإطار الزمني المطلوب
     const used = resample(raw5m, currentTf);
-    const pF = Math.max(2, parseInt(els.emaF.value||'12',10));
-    const pS = Math.max(pF+1, parseInt(els.emaS.value||'26',10));
-    const pR = Math.max(2, parseInt(els.rsiP.value||'14',10));
+    const pF = Math.max(2, parseInt(els.emaF?.value||'12',10));
+    const pS = Math.max(pF+1, parseInt(els.emaS?.value||'26',10));
+    const pR = Math.max(2, parseInt(els.rsiP?.value||'14',10));
     const rows = computeIndicators(used, pF, pS, pR);
 
     // إشارة الملخص من CSV
@@ -237,7 +270,7 @@ async function run(){
     else if (sig==='بيع') els.liveSummary.classList.add('bad');
     else els.liveSummary.classList.add('warn');
 
-    // إذا السعر الحي لسه فاضي، عبّيه بآخر Close من CSV
+    // إذا السعر الحي فاضي، عبّيه مؤقتاً من CSV
     if (!els.livePrice.textContent || els.livePrice.textContent==='—') {
       if (last){ els.livePrice.textContent = last.close.toFixed(2); els.liveTime.textContent = fmtIso(last.t); }
     }
@@ -249,11 +282,11 @@ async function run(){
       const tr = document.createElement('tr');
       const sigR = decideSignal(r);
       tr.innerHTML =
-        `<td>${r.emaF?.toFixed(2) ?? '—'}</td>`+
-        `<td>${r.macd ?? '—'}</td>`+
-        `<td>${r.rsi ?? '—'}</td>`+
-        `<td class="${sigR==='شراء'?'good':sigR==='بيع'?'bad':'warn'}">${sigR}</td>`+
         `<td>${r.close.toFixed(2)}</td>`+
+        `<td class="${sigR==='شراء'?'good':sigR==='بيع'?'bad':'warn'}">${sigR}</td>`+
+        `<td>${r.rsi ?? '—'}</td>`+
+        `<td>${r.macd ?? '—'}</td>`+
+        `<td>${r.emaF?.toFixed(2) ?? '—'}</td>`+
         `<td>${fmtIso(r.t)}</td>`;
       body.appendChild(tr);
     }
@@ -265,25 +298,27 @@ async function run(){
 
 /*************** أحداث ***************/
 (function init(){
+  // CSV remembered
   const saved = loadCsv();
-  if (saved) els.csv.value = saved;
-
-  els.csv.addEventListener('change', ()=> saveCsv(els.csv.value.trim()));
-  els.clearCsv.addEventListener('click', ()=>{
+  if (els.csv && saved) els.csv.value = saved;
+  els.csv?.addEventListener('change', ()=> saveCsv(els.csv.value.trim()));
+  els.clearCsv?.addEventListener('click', ()=>{
     els.csv.value = '';
     saveCsv('');
     els.csv.focus();
   });
 
-  els.tf5.onclick = ()=>{ currentTf=TF['5m']; markTf(); run(); };
-  els.tf60.onclick = ()=>{ currentTf=TF['1h']; markTf(); run(); };
-  els.tfD.onclick = ()=>{ currentTf=TF['1d']; markTf(); run(); };
+  // TF
+  els.tf5 && (els.tf5.onclick = ()=>{ currentTf=TF['5m']; markTf(); run(); });
+  els.tf60 && (els.tf60.onclick = ()=>{ currentTf=TF['1h']; markTf(); run(); });
+  els.tfD && (els.tfD.onclick = ()=>{ currentTf=TF['1d']; markTf(); run(); });
 
-  els.run.onclick = ()=> run();
+  // Run
+  els.run && (els.run.onclick = ()=> run());
 
   markTf();
-  run();                        // تحليل CSV (مؤشرات + جدول + Pivot)
-  fetchLiveFromStooq();         // السعر الحي مباشرة
-  setInterval(fetchLiveFromStooq, 1_000); // تحديث السعر الحي كل ثانية
-  setInterval(run, 60_000);     // تحديث التحليلات من CSV كل دقيقة (غَيّرها إذا بدك)
+  run();                         // تحليل CSV (مؤشرات + جدول + Pivot)
+  updateLive();                  // السعر الحي فوراً
+  setInterval(updateLive, LIVE_POLL_MS); // تحديث السعر الحي كل ثانية
+  setInterval(run, 60_000);      // تحديث التحليلات من CSV كل دقيقة
 })();
