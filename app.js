@@ -15,6 +15,54 @@ const PROXY = 'https://r.jina.ai/http://';
 const STOOQ_LIVE_CSV   = PROXY + 'stooq.com/q/l/?s=xauusd&f=sd2t2ohlcv&h&e=csv';
 const STOOQ_DAILY_OHLC = PROXY + 'stooq.com/q/d/l/?s=xauusd&i=d';
 
+// ======= Aggregators (من 5 دقائق ← ساعة/يوم) =======
+function aggregateFrom5min(rows) {
+  // rows: [{ts: Date, close: Number}] مرتبة زمنياً
+  const hour = [], day = [];
+  let hb = null, db = null, lastH = null, lastD = null;
+
+  for (const r of rows) {
+    const t = new Date(r.ts);
+    const dKey = t.toISOString().slice(0,10);
+    const hKey = t.toISOString().slice(0,13);
+
+    if (hKey !== lastH) {
+      if (hb) hour.push({...hb});
+      hb = { ts: new Date(hKey + ':00:00Z'), open:r.close, high:r.close, low:r.close, close:r.close };
+      lastH = hKey;
+    } else {
+      hb.high = Math.max(hb.high, r.close);
+      hb.low  = Math.min(hb.low , r.close);
+      hb.close = r.close;
+    }
+
+    if (dKey !== lastD) {
+      if (db) day.push({...db});
+      db = { ts: new Date(dKey + 'T00:00:00Z'), open:r.close, high:r.close, low:r.close, close:r.close };
+      lastD = dKey;
+    } else {
+      db.high = Math.max(db.high, r.close);
+      db.low  = Math.min(db.low , r.close);
+      db.close = r.close;
+    }
+  }
+  if (hb) hour.push(hb);
+  if (db) day.push(db);
+  return {hour, day};
+}
+
+function calcPivots(o,h,l,c){
+  const P = (h + l + c) / 3;
+  return {
+    P,
+    R1: 2*P - l,
+    S1: 2*P - h,
+    R2: P + (h - l),
+    S2: P - (h - l),
+    R3: h + 2*(P - l),
+    S3: l - 2*(h - P)
+  };
+}
 
 /************ DOM ************/
 const els = {
@@ -350,6 +398,25 @@ async function boot(){
 boot();
 
 /************ زر “حساب الإشارات الآن” للـCSV اليدوي ************/
+// إذا كان الملف هو File الـ 5 دقائق:
+if (/XAUUSD_5min\.csv$/i.test(url)) {
+  // اجمع 5 دقائق → ساعة ويوم
+  const agg = aggregateFrom5min(rows5);
+
+  // 1) إشارات الإطار "ساعة" من agg.hour (استعملي نفس دالة حساب المؤشرات اللي بتطبّقيها عادةً)
+  computeAndRenderSignals('hour', agg.hour.map(r => ({ time: r.ts, price: r.close })));
+
+  // 2) Pivot من آخر يوم
+  const lastDay = agg.day.at(-1);
+  if (lastDay) {
+    const piv = calcPivots(lastDay.open, lastDay.high, lastDay.low, lastDay.close);
+    renderPivots(piv);  // استعملي نفس دالة عرض الدعم/المقاومة عندك
+  }
+
+  // إذا ما بدّك تعملي شي للشارت، تجاهلي الرسم—بس خلي الملخص/الجدول ينعرضوا
+  return; // خلّصنا هالحالة
+}
+
 els.runBtn.addEventListener('click', async ()=>{
   const src = els.sourceSel.value;
   if (src!=='csv'){
