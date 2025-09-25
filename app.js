@@ -8,9 +8,11 @@ const DAILY_CSV_URL  = 'https://skyeagle123.github.io/GoldSignalPWA/XAUUSD_live.
 const HOURLY_CSV_URL = 'https://skyeagle123.github.io/GoldSignalPWA/XAUUSD_hourly.csv';
 
 // احتياطي سعر حي من Stooq (صف واحد: Symbol,Date,Time,Open,High,Low,Close,Volume)
-const STOOQ_LIVE_CSV = 'https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlcv&h&e=csv';
-// OHLC يومي لحساب Pivot
-const STOOQ_DAILY_OHLC = 'https://stooq.com/q/d/l/?s=xauusd&i=d';
+// بدّل تعريفات Stooq الحالية بهي النسخة عبر بروكسي يفتح CORS
+const PROXY = 'https://r.jina.ai/http://';
+const STOOQ_LIVE_CSV   = PROXY + 'stooq.com/q/l/?s=xauusd&f=sd2t2ohlcv&h&e=csv'; // صف واحد حي
+const STOOQ_DAILY_OHLC = PROXY + 'stooq.com/q/d/l/?s=xauusd&i=d';                 // OHLC يومي لـ Pivot
+
 
 /************ DOM ************/
 const els = {
