@@ -1,56 +1,56 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>إشارات الذهب • GoldSignals</title>
-  <meta name="theme-color" content="#0b1220" />
-  <link rel="icon" href="icons/icon-192.png" />
+  <meta name="theme-color" content="#0b1220">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
   <style>
-    :root{--bg:#0b1220;--card:#111827;--line:#1f2937;--muted:#94a3b8;--fg:#e5e7eb;--good:#10b981;--bad:#f87171;--warn:#f59e0b}
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif}
-    header{position:sticky;top:0;background:#0b1220cc;border-bottom:1px solid var(--line);backdrop-filter:blur(6px);padding:12px 16px}
+    :root { --bg:#0b1220; --card:#111827; --muted:#9ca3af; --border:#1f2937; --text:#e5e7eb; --ok:#10b981; --bad:#f87171; --warn:#f59e0b; }
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;background:var(--bg);color:var(--text)}
+    header{position:sticky;top:0;background:#0b1220cc;backdrop-filter:blur(6px);border-bottom:1px solid var(--border);padding:14px 16px}
     h1{margin:0;font-size:20px}
     .container{max-width:1100px;margin:0 auto;padding:16px}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 6px 18px rgba(0,0,0,.25)}
-    .row{display:flex;gap:12px;flex-wrap:wrap}
-    .col{flex:1 1 260px}
-    label{display:block;margin:6px 0;color:var(--muted)}
-    input,button,select{width:100%;padding:10px;border-radius:12px;border:1px solid #334155;background:#0b1220;color:var(--fg)}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+    .row{display:flex;gap:12px;flex-wrap:wrap}.col{flex:1 1 280px}
+    label{display:block;margin-bottom:6px;color:var(--muted)}
+    input,button,select{width:100%;padding:10px;border-radius:12px;border:1px solid var(--border);background:var(--bg);color:var(--text)}
     button{cursor:pointer;font-weight:600}
-    .pill-btn{padding:8px 12px;border:1px solid #334155;background:#0b1220;color:var(--fg);border-radius:999px;margin-inline-end:8px;cursor:pointer}
-    .pill-btn.active{background:#1f2937;border-color:#475569}
-    .muted{color:var(--muted)} .good{color:var(--good)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+    .btns{display:flex;gap:8px;flex-wrap:wrap}
+    .pill{display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:var(--bg);cursor:pointer}
+    .pill.active{outline:2px solid #334155}
     table{width:100%;border-collapse:collapse}
-    th,td{border-bottom:1px solid #273449;padding:8px;text-align:center}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-    .kpi{display:flex;flex-direction:column;gap:8px}
-    .kpi h4{margin:0;font-weight:600;color:var(--muted)}
-    .kpi .val{font-size:28px;font-weight:800}
-    .signal{font-size:26px;font-weight:800}
-    .footer{opacity:.7;font-size:12px}
+    th,td{border-bottom:1px solid #273449;padding:8px;text-align:center;white-space:nowrap}
+    .good{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+    .muted{color:var(--muted)}
   </style>
 </head>
 <body>
-  <header><h1>GoldSignals • إشارات الذهب</h1></header>
-
+  <header><h1>إشارات الذهب • GoldSignals</h1></header>
   <div class="container">
 
-    <!-- الإعدادات -->
     <div class="card">
+      <label>رابط CSV للأسعار (اختياري):</label>
       <div class="row">
         <div class="col">
-          <label>رابط CSV للأسعار (اختياري):</label>
-          <input id="csvUrl" placeholder="اتركه فاضي لاستخدام ملف XAUUSD_5min.csv من نفس الريبو">
+          <input id="csvUrl" placeholder="اتركه فاضي لاستخدام XAUUSD_5min.csv من نفس الريبو تلقائيًا">
         </div>
+        <div style="width:140px">
+          <button id="clearCsvBtn" title="مسح الرابط المحفوظ">مسح الرابط</button>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:8px">
         <div class="col">
           <label>إطار زمني:</label>
-          <div id="tfGroup">
-            <button type="button" class="pill-btn active" data-tf="5m">5 دقايق</button>
-            <button type="button" class="pill-btn" data-tf="1h">ساعة</button>
-            <button type="button" class="pill-btn" data-tf="1d">يوم</button>
+          <div class="btns">
+            <button class="pill active" id="tf5">5 دقائق</button>
+            <button class="pill" id="tf60">ساعة</button>
+            <button class="pill" id="tfD">يوم</button>
           </div>
-          <div class="muted" id="tfHint">المصدر الحالي: 5 دقايق (XAUUSD_5min.csv)</div>
+          <div class="muted" style="margin-top:6px">إذا تركت الرابط فاضي رح نستخدم <code>XAUUSD_5min.csv</code> ونحوّل داخليًا إلى ساعة/يوم عند الحاجة.</div>
         </div>
         <div class="col">
           <label>إعدادات المؤشرات:</label>
@@ -61,68 +61,35 @@
           </div>
         </div>
       </div>
-      <div class="row" style="margin-top:10px">
+
+      <div class="row" style="margin-top:12px">
         <div class="col"><button id="runBtn">حساب الإشارات الآن</button></div>
       </div>
-      <p class="footer">التطبيق يعمل بدون خادم: يقرأ ملف 5 دقايق ويعيد تجميعه محلّيًا للساعة/اليوم قبل حساب المؤشرات.</p>
+      <div class="muted" style="margin-top:6px">يُحدّث نفسه كل 60 ثانية ويلتقط آخر صف من ملف الـ CSV.</div>
     </div>
 
-    <!-- ملخص سريع -->
     <div class="card">
-      <div class="grid">
-        <div class="kpi">
-          <h4>السعر الحي</h4>
-          <div class="val" id="livePrice">--</div>
-          <div class="muted" id="lastTs">آخر تحديث: --</div>
-        </div>
-        <div class="kpi">
-          <h4>الإشارة الآن</h4>
-          <div class="signal" id="signalNow">جاهز للحساب…</div>
-          <div class="muted" id="signalSub">RSI: -- • MACD: --</div>
-        </div>
-        <div class="kpi">
-          <h4>الدعم/المقاومة (تقريبي)</h4>
-          <div>R3: <span id="R3">—</span></div>
-          <div>R2: <span id="R2">—</span></div>
-          <div>R1: <span id="R1">—</span></div>
-          <div>S1: <span id="S1">—</span></div>
-          <div>S2: <span id="S2">—</span></div>
-          <div>S3: <span id="S3">—</span></div>
-        </div>
+      <h3 style="margin-top:0">السعر الحي</h3>
+      <div class="row">
+        <div class="col"><div class="muted">السعر الآن:</div><div id="livePrice" style="font-size:28px;font-weight:700">—</div></div>
+        <div class="col"><div class="muted">آخر تحديث:</div><div id="liveTime">—</div></div>
+        <div class="col"><div class="muted">الملخّص:</div><div id="liveSummary" style="font-weight:700">—</div></div>
       </div>
     </div>
 
-    <!-- جدول المؤشرات الحاليّة -->
     <div class="card">
-      <h3 style="margin-top:0">جدول المؤشرات</h3>
-      <table>
-        <thead><tr><th>المؤشر</th><th>القيمة</th><th>الإشارة</th></tr></thead>
-        <tbody id="indTbody"></tbody>
-      </table>
-    </div>
-
-    <!-- البيانات الأخيرة -->
-    <div class="card">
-      <h3 style="margin-top:0">البيانات الأخيرة</h3>
+      <h3 style="margin:0 0 12px 0">البيانات الأخيرة</h3>
       <div style="overflow:auto">
-        <table>
-          <thead>
-            <tr>
-              <th>التاريخ</th>
-              <th>السعر</th>
-              <th>الإشارة</th>
-              <th>RSI</th>
-              <th>MACD</th>
-            </tr>
-          </thead>
-          <tbody id="recentTbody"></tbody>
+        <table id="dataTable">
+          <thead><tr>
+            <th>EMA F</th><th>MACD</th><th>RSI</th><th>الإشارة</th><th>السعر</th><th>التاريخ</th>
+          </tr></thead>
+          <tbody></tbody>
         </table>
       </div>
     </div>
 
-    <p class="footer">* هذا المحتوى تعليمي وليس نصيحة استثمارية.</p>
   </div>
-
   <script src="app.js"></script>
 </body>
 </html>
