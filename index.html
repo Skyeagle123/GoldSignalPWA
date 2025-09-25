@@ -77,7 +77,25 @@
       <div id="pivots" class="grid"></div>
     </div>
   </div>
+<!-- ملخص الإشارة الآن -->
+<div class="card" id="summaryCard">
+  <h3>ملخّص الإشارة الآن</h3>
+  <div style="display:flex;align-items:center;gap:12px;margin-top:6px">
+    <span id="signalBadge" class="pill warn">—</span>
+    <span id="signalNote" class="signal">جاهز للحساب…</span>
+  </div>
+</div>
 
+<!-- جدول المؤشرات -->
+<div class="card" id="signalsCard">
+  <h3>جدول المؤشرات</h3>
+  <table id="signalsTbl">
+    <thead>
+      <tr><th>المؤشر</th><th>القيمة</th><th>الإشارة</th></tr>
+    </thead>
+    <tbody id="signalsBody"></tbody>
+  </table>
+</div>
   <div class="card">
     <h3>البيانات الأخيرة</h3>
     <table>
