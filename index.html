@@ -90,6 +90,15 @@
         <div><label>EMA سريع</label><input id="emaFast" type="number" value="12"></div>
         <div><label>EMA بطيء</label><input id="emaSlow" type="number" value="26"></div>
         <div><label>فترة RSI</label><input id="rsiPeriod" type="number" value="14"></div>
+
+        <!-- ✅ إضافة جديدة فقط: تفعيل الإشارات الدقيقة -->
+        <div>
+          <label>الإشارات الدقيقة (تجريبية)</label>
+          <label style="display:flex;align-items:center;gap:8px">
+            <input id="useSmart" type="checkbox"> تفعيل
+          </label>
+          <div class="muted" style="font-size:12px">تستخدم اتّجاه أعلى (1س/يومي) + ATR + Pivot لتقليل الإشارات الكاذبة.</div>
+        </div>
       </div>
     </div>
 
@@ -110,7 +119,7 @@
       </p>
     </div>
 
-    <!-- البيانات الأخيرة (أضفنا التاريخ والوقت المحليين) -->
+    <!-- البيانات الأخيرة -->
     <div class="card">
       <h3 class="section-title">البيانات الأخيرة</h3>
       <div style="overflow:auto">
@@ -131,12 +140,9 @@
       </div>
     </div>
 
-    <p class="muted" style="font-size:12px">
-      * هذا المشروع لأغراض تعليمية، وليست نصيحة استثمارية.
-    </p>
+    <p class="muted" style="font-size:12px">* هذا المشروع لأغراض تعليمية، وليست نصيحة استثمارية.</p>
   </div>
 
-  <!-- سكربت التطبيق -->
   <script src="app.js"></script>
 </body>
 </html>
