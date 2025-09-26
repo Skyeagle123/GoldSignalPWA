@@ -1,4 +1,4 @@
-/************ GoldSignals - app.js (stable) ************/
+/************ GoldSignals - app.js (stable + local date/time) ************/
 /* يعمل مع IDs التالية في الـHTML:
    csvInput, tf5, tf60, tfD, runBtn,
    livePrice, liveTime, summaryText,
@@ -53,6 +53,17 @@ elRsiPeriod?.addEventListener('input',()=> RSI_PER  = parseInt(elRsiPeriod.value
 const nf2 = new Intl.NumberFormat('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 const nf4 = new Intl.NumberFormat('en-US', {minimumFractionDigits:4, maximumFractionDigits:4});
 const fmtTime = (iso) => { try { return new Date(iso).toISOString().replace('T',' ').replace('Z',''); } catch { return String(iso); } };
+
+/* ✅ جديد: تنسيق وقت محلي للجدول (YYYY-MM-DD و HH:mm) */
+function fmtLocal(ts){
+  const d  = new Date(ts);
+  const y  = d.getFullYear();
+  const m  = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  return { date: `${y}-${m}-${dd}`, time: `${hh}:${mm}` };
+}
 
 /*--------- حالة الإطار الزمني ---------*/
 let currentTF = 5;
@@ -223,20 +234,48 @@ function paintPivots(p){
   elS2&&(elS2.textContent=nf2.format(p.S2));
   elS3&&(elS3.textContent=nf2.format(p.S3));
 }
+
+/* ✅ جديد: الجدول مع التاريخ/الوقت المحليين + إنشاء thead تلقائيًا */
 function paintTable(rows){
   if (!elRowsBody) return;
+
+  // أنشئ/حدّث thead تلقائيًا ليشمل التاريخ والوقت
+  const table = elRowsBody.closest('table');
+  if (table){
+    let thead = table.querySelector('thead');
+    if (!thead){
+      thead = document.createElement('thead');
+      table.prepend(thead);
+    }
+    thead.innerHTML = `
+      <tr>
+        <th>التاريخ</th>
+        <th>الوقت (محلي)</th>
+        <th>السعر</th>
+        <th>الإشارة</th>
+        <th>RSI</th>
+        <th>MACD</th>
+        <th>EMA F</th>
+      </tr>
+    `;
+  }
+
   elRowsBody.innerHTML='';
   const last = rows.slice(-TABLE_ROWS).reverse();
   for (const r of last){
     const s = classify(r.rsi, r.macd);
     const color = s==='شراء'?'#10b981':s==='بيع'?'#ef4444':'#f59e0b';
+    const { date, time } = fmtLocal(r.ts); // ← تاريخ/وقت محلي
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${nf2.format(r.emaF)}</td>
-      <td>${Number.isFinite(r.macd)?nf4.format(r.macd):'—'}</td>
-      <td>${Number.isFinite(r.rsi)?nf2.format(r.rsi):'—'}</td>
-      <td style="color:${color};font-weight:600">${s}</td>
+      <td>${date}</td>
+      <td>${time}</td>
       <td>${nf2.format(r.price)}</td>
+      <td style="color:${color};font-weight:600">${s}</td>
+      <td>${Number.isFinite(r.rsi)?nf2.format(r.rsi):'—'}</td>
+      <td>${Number.isFinite(r.macd)?nf4.format(r.macd):'—'}</td>
+      <td>${Number.isFinite(r.emaF)?nf2.format(r.emaF):'—'}</td>
     `;
     elRowsBody.appendChild(tr);
   }
