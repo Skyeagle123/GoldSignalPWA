@@ -1,156 +1,140 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
   <title>إشارات الذهب • GoldSignals</title>
-  <meta name="theme-color" content="#0b1220" />
-
-  <!-- أيقونات ومانيفست (اختياري إن كنت تستخدم PWA) -->
-  <link rel="manifest" href="manifest.json" />
-  <link rel="icon" href="icon-192.png" />
-
+  <link rel="icon" href="icons/icon-192.png">
   <style>
     :root{
-      --bg:#0b1220; --card:#111827; --line:#1f2937; --text:#e5e7eb; --muted:#9ca3af;
-      --good:#10b981; --bad:#f87171; --warn:#f59e0b; --accent:#3b82f6;
+      --bg:#0b1220; --card:#111827; --line:#1f2937; --muted:#9ca3af; --soft:#334155;
+      --good:#10b981; --bad:#ef4444; --warn:#f59e0b; --txt:#e5e7eb;
     }
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif}
-    header{position:sticky;top:0;z-index:10;background:#0b1220dd;backdrop-filter:blur(6px);border-bottom:1px solid var(--line);padding:14px 18px}
-    h1{margin:0;font-size:20px}
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif}
+    header{position:sticky;top:0;z-index:5;background:#0b1220cc;border-bottom:1px solid var(--line);backdrop-filter:blur(6px)}
+    .bar{max-width:1100px;margin:0 auto;padding:14px 16px;font-weight:700}
     .container{max-width:1100px;margin:0 auto;padding:16px}
     .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 6px 18px rgba(0,0,0,.25)}
-    .row{display:flex;gap:12px;flex-wrap:wrap}
-    .col{flex:1 1 260px}
-    label{display:block;margin:6px 0;color:var(--muted);font-size:14px}
-    input,button,select{width:100%;padding:12px;border-radius:12px;border:1px solid #273449;background:#0b1220;color:var(--text)}
-    button{cursor:pointer;font-weight:700}
-    button.primary{background:#0b1220;border-color:#273449}
-    .btns{display:flex;gap:8px;flex-wrap:wrap}
-    .chip{padding:8px 14px;border-radius:999px;border:1px solid #273449;background:#0b1220;cursor:pointer;user-select:none}
-    .chip.active{border-color:var(--accent);color:#cde1ff}
-    .muted{color:var(--muted);font-size:12px}
-    .live{font-size:36px;font-weight:800;margin:6px 0}
-    .liveRow{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
-    .signal{font-weight:700}
-    .good{color:var(--good)} .bad{color:var(--bad)} .warn{color:var(--warn)}
-    .grid{display:grid;gap:12px}
-    .grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
-    .grid-1{grid-template-columns:1fr}
-    @media (max-width:700px){ .grid-3{grid-template-columns:1fr 1fr} }
-    @media (max-width:480px){ .grid-3{grid-template-columns:1fr} .live{font-size:32px} }
-
-    /* جدول البيانات الأخيرة (يمين ← يسار) */
-    table{width:100%;border-collapse:collapse;direction:rtl}
-    thead th{background:#0e172a;color:#cbd5e1}
-    th,td{padding:10px;border-bottom:1px solid #273449;text-align:center}
-    tbody tr:hover{background:#0e1626}
-
-    .kpi{background:#0b1220;border:1px solid #273449;border-radius:14px;text-align:center;padding:14px}
-    .kpi .lbl{color:var(--muted);font-size:12px}
-    .kpi .val{font-size:22px;margin-top:6px}
-    .footer{opacity:.6;font-size:12px;margin-top:20px}
-    a{color:#93c5fd}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .pill{border:1px solid var(--soft);background:transparent;color:var(--txt);padding:8px 12px;border-radius:999px;cursor:pointer}
+    .pill.active{background:#0e1a31;border-color:#2b3a55}
+    label{display:block;margin-bottom:6px;color:var(--muted);font-size:14px}
+    input,button{width:100%;padding:10px;border-radius:12px;border:1px solid var(--soft);background:#0b1220;color:var(--txt)}
+    button{cursor:pointer}
+    h1,h2,h3{margin:0 0 10px 0}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid #273449;padding:10px;text-align:center}
+    .muted{color:var(--muted)}
+    .good{color:var(--good);font-weight:600}
+    .bad{color:var(--bad);font-weight:600}
+    .warn{color:var(--warn);font-weight:600}
+    .section-title{margin-bottom:6px}
   </style>
 </head>
 <body>
-  <header>
-    <h1>GoldSignals • إشارات الذهب</h1>
-  </header>
+  <header><div class="bar">GoldSignals • إشارات الذهب</div></header>
 
   <div class="container">
 
-    <!-- إدخال CSV + الإطارات الزمنية + إعدادات المؤشرات -->
+    <!-- مصدر البيانات + الإطار الزمني -->
     <div class="card">
-      <div class="row">
-        <div class="col">
-          <label>رابط CSV للأسعار (اختياري)</label>
-          <input id="csvUrl" placeholder="اتركه فارغًا لاستخدام XAUUSD_5min.csv من نفس الموقع">
-          <div class="muted">إذا تركته فارغًا سيُحمِّل الملف الافتراضي من المشروع (5 دقائق).</div>
+      <div class="grid">
+        <div>
+          <label>رابط CSV للأسعار (اختياري):</label>
+          <input id="csvInput" placeholder="اتركه فاضي لاستعمال XAUUSD_5min.csv من نفس الريبو">
+          <div class="muted" style="margin-top:6px;font-size:12px">
+            إذا تركته فاضي سيقرأ تلقائياً من <code>XAUUSD_5min.csv</code>.
+          </div>
         </div>
-        <div class="col">
+        <div>
           <label>إطار زمني:</label>
-          <div class="btns">
-            <span id="tf-5"  class="chip active">5 دقائق</span>
-            <span id="tf-60" class="chip">ساعة</span>
-            <span id="tf-1d" class="chip">يوم</span>
+          <div class="row">
+            <button id="tf5" class="pill active">5 دقائق</button>
+            <button id="tf60" class="pill">ساعة</button>
+            <button id="tfD" class="pill">يوم</button>
+            <button id="runBtn" class="pill" style="margin-inline-start:auto">حساب الإشارات الآن</button>
           </div>
         </div>
       </div>
-
-      <div class="row" style="margin-top:8px">
-        <div class="col">
-          <label>EMA سريع</label>
-          <input id="emaFast" type="number" value="12" inputmode="numeric">
-        </div>
-        <div class="col">
-          <label>EMA بطيء</label>
-          <input id="emaSlow" type="number" value="26" inputmode="numeric">
-        </div>
-        <div class="col">
-          <label>RSI فترة</label>
-          <input id="rsiPeriod" type="number" value="14" inputmode="numeric">
-        </div>
-      </div>
-
-      <div class="row" style="margin-top:12px">
-        <div class="col"><button id="runBtn" class="primary">حساب الإشارات الآن</button></div>
-      </div>
-
-      <p class="muted" style="margin-top:8px">يتم تحديث السعر الحي كل 30 ثانية والتجميع محليًا لإطار الساعة/اليوم من ملف 5 دقائق.</p>
     </div>
 
     <!-- السعر الحي + الملخص -->
     <div class="card">
-      <div class="liveRow">
+      <h3 class="section-title">السعر الحي</h3>
+      <div class="grid">
         <div>
-          <div class="muted">السعر الآن:</div>
-          <div id="livePrice" class="live">—</div>
+          <div id="livePrice" style="font-size:36px;font-weight:800">—</div>
+          <div id="liveTime" class="muted">—</div>
         </div>
-        <div style="text-align:end">
-          <div class="muted">آخر تحديث:</div>
-          <div id="liveTime">—</div>
-          <div class="muted" style="margin-top:6px">الملخّص:</div>
-          <div id="liveSummary" class="signal warn">—</div>
+        <div>
+          <label>الملخّص الآن:</label>
+          <div id="summaryText" style="font-size:18px;font-weight:700">—</div>
         </div>
       </div>
     </div>
 
-    <!-- Pivot الدعم والمقاومة -->
+    <!-- المؤشرات السريعة -->
     <div class="card">
-      <h3 style="margin-top:0">الدعم والمقاومة (Pivot)</h3>
-      <div class="grid grid-3">
-        <div class="kpi"><div class="lbl">R1</div><div id="r1" class="val">—</div></div>
-        <div class="kpi"><div class="lbl">R2</div><div id="r2" class="val">—</div></div>
-        <div class="kpi"><div class="lbl">R3</div><div id="r3" class="val">—</div></div>
+      <h3 class="section-title">جدول المؤشرات</h3>
+      <div class="grid">
+        <div>RSI: <b id="indRSI">—</b></div>
+        <div>MACD: <b id="indMACD">—</b></div>
+        <div>EMA سريع: <b id="indEMAF">—</b></div>
+        <div>EMA بطيء: <b id="indEMAS">—</b></div>
       </div>
-      <div class="kpi" style="margin:12px 0">
-        <div class="lbl">Pivot</div>
-        <div id="pivot" class="val">—</div>
+
+      <!-- إعدادات المؤشرات (قابلة للتعديل) -->
+      <div class="grid" style="margin-top:10px">
+        <div><label>EMA سريع</label><input id="emaFast" type="number" value="12"></div>
+        <div><label>EMA بطيء</label><input id="emaSlow" type="number" value="26"></div>
+        <div><label>فترة RSI</label><input id="rsiPeriod" type="number" value="14"></div>
       </div>
-      <div class="grid grid-3">
-        <div class="kpi"><div class="lbl">S3</div><div id="s3" class="val">—</div></div>
-        <div class="kpi"><div class="lbl">S2</div><div id="s2" class="val">—</div></div>
-        <div class="kpi"><div class="lbl">S1</div><div id="s1" class="val">—</div></div>
-      </div>
-      <div class="muted" style="margin-top:8px">يُحسب الـ Pivot من آخر يوم مكتمل في بيانات 5 دقائق (High/Low/Close).</div>
     </div>
 
-    <!-- جدول البيانات الأخيرة -->
+    <!-- Pivot والدعم/المقاومة -->
     <div class="card">
-      <h3 style="margin-top:0">البيانات الأخيرة</h3>
+      <h3 class="section-title">الدعم والمقاومة (Pivot)</h3>
+      <div class="grid">
+        <div>R1 <div id="r1">—</div></div>
+        <div>R2 <div id="r2">—</div></div>
+        <div>R3 <div id="r3">—</div></div>
+        <div>Pivot <div id="pivotP">—</div></div>
+        <div>S1 <div id="s1">—</div></div>
+        <div>S2 <div id="s2">—</div></div>
+        <div>S3 <div id="s3">—</div></div>
+      </div>
+      <p class="muted" style="margin-top:8px">
+        يُحسب الـ Pivot من آخر يوم مكتمل باستخدام (High/Low/Close) المستخرجة من بيانات 5 دقائق.
+      </p>
+    </div>
+
+    <!-- البيانات الأخيرة (نفس ترتيب صورتك: EMAF, MACD, RSI, الإشارة, السعر) -->
+    <div class="card">
+      <h3 class="section-title">البيانات الأخيرة</h3>
       <div style="overflow:auto">
-        <table id="dataTable">
-          <thead></thead>
-          <tbody></tbody>
+        <table>
+          <thead>
+            <tr>
+              <th>EMA F</th>
+              <th>MACD</th>
+              <th>RSI</th>
+              <th>الإشارة</th>
+              <th>السعر</th>
+            </tr>
+          </thead>
+          <tbody id="rowsBody"></tbody>
         </table>
       </div>
     </div>
 
-    <p class="footer">© 2025 GoldSignals — هذه الإشارات تعليمية وليست توصية استثمارية.</p>
+    <p class="muted" style="font-size:12px">
+      * هذا المشروع لأغراض تعليمية، وليست نصيحة استثمارية.
+    </p>
   </div>
 
+  <!-- سكربت التطبيق -->
   <script src="app.js"></script>
 </body>
 </html>
