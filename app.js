@@ -1,323 +1,298 @@
-/************ GoldSignals - app.js (stable) ************/
-/* يعمل مع IDs التالية في الـHTML:
-   csvInput, tf5, tf60, tfD, runBtn,
-   livePrice, liveTime, summaryText,
-   indRSI, indMACD, indEMAF, indEMAS,
-   pivotP, r1, r2, r3, s1, s2, s3,
-   rowsBody
-*/
+/******** إعدادات ********/
+const DEFAULT_5MIN_CSV_URL =
+  'https://skyeagle123.github.io/GoldSignalPWA/XAUUSD_5min.csv';
 
-/*--------- إعدادات عامة ---------*/
-const LIVE_JSON_URL    = 'https://goldprice-proxy.samer-mourtada.workers.dev/price';
-const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';   // إذا تركت الحقل فاضي
-const TABLE_ROWS       = 80;
-const LIVE_REFRESH_SEC = 30;
+// ضع هنا عنوان الـWorker تبعك (Cloudflare) لنقطة السعر الحي.
+// إنشاءناه باسم goldprice-proxy: endpoint /price يعيد {price, date, time}
+const LIVE_JSON_URL =
+  'https://goldprice-proxy.samer-mourtada.workers.dev/price?s=xauusd';
 
-/*--------- التقاط عناصر الواجهة ---------*/
-const $ = (id) => document.getElementById(id);
-const elCsvInput   = $('csvInput');
-const elTf5        = $('tf5');
-const elTf60       = $('tf60');
-const elTfD        = $('tfD');
-const elBtnRun     = $('runBtn');
+/******** أدوات تنسيق/وقت ********/
+// أرقام لاتينية
+const nf0 = new Intl.NumberFormat('en-GB', {maximumFractionDigits: 0});
+const nf2 = new Intl.NumberFormat('en-GB', {maximumFractionDigits: 2});
+const nf4 = new Intl.NumberFormat('en-GB', {maximumFractionDigits: 4});
 
-const elLivePrice  = $('livePrice');
-const elLiveTime   = $('liveTime');
-const elSummaryText= $('summaryText');
+const en0 = (n)=> nf0.format(n);
+const en2 = (n)=> nf2.format(n);
+const en4 = (n)=> nf4.format(n);
 
-const elIndRSI  = $('indRSI');
-const elIndMACD = $('indMACD');
-const elIndEMAF = $('indEMAF');
-const elIndEMAS = $('indEMAS');
-
-const elPivotP = $('pivotP');
-const elR1 = $('r1'), elR2 = $('r2'), elR3 = $('r3');
-const elS1 = $('s1'), elS2 = $('s2'), elS3 = $('s3');
-
-const elRowsBody = $('rowsBody');
-
-/* إعدادات المؤشرات (قابلة للتغيير من HTML إذا بدك) */
-const elEmaFast   = $('emaFast');
-const elEmaSlow   = $('emaSlow');
-const elRsiPeriod = $('rsiPeriod');
-
-let EMA_FAST = parseInt(elEmaFast?.value || '12', 10);
-let EMA_SLOW = parseInt(elEmaSlow?.value || '26', 10);
-let RSI_PER  = parseInt(elRsiPeriod?.value || '14', 10);
-
-elEmaFast?.addEventListener('input', ()=> EMA_FAST = parseInt(elEmaFast.value||'12',10));
-elEmaSlow?.addEventListener('input', ()=> EMA_SLOW = parseInt(elEmaSlow.value||'26',10));
-elRsiPeriod?.addEventListener('input',()=> RSI_PER  = parseInt(elRsiPeriod.value||'14',10));
-
-/*--------- تنسيقات أرقام EN ---------*/
-const nf2 = new Intl.NumberFormat('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-const nf4 = new Intl.NumberFormat('en-US', {minimumFractionDigits:4, maximumFractionDigits:4});
-const fmtTime = (iso) => { try { return new Date(iso).toISOString().replace('T',' ').replace('Z',''); } catch { return String(iso); } };
-
-/*--------- حالة الإطار الزمني ---------*/
-let currentTF = 5;
-function setActiveTF(tf){
-  currentTF = tf;
-  [elTf5, elTf60, elTfD].forEach(b => b?.classList?.remove('active'));
-  if (tf===5)    elTf5?.classList?.add('active');
-  if (tf===60)   elTf60?.classList?.add('active');
-  if (tf===1440) elTfD?.classList?.add('active');
+function toNum(x){
+  const n = Number(String(x).replace(/[^\d.+-]/g,''));
+  return Number.isFinite(n) ? n : null;
 }
 
-/*--------- CSV helpers ---------*/
-function parseCsv(text){
-  const lines = text.trim().split(/\r?\n/);
-  if (!lines.length) return [];
-  const header = lines[0].toLowerCase();
-  const out = [];
+// وقت محلي: YYYY-MM-DD و HH:mm:ss
+function fmtLocal(ts){
+  const d = new Date(ts);
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  const ss = String(d.getSeconds()).padStart(2,'0');
+  return {date: `${y}-${m}-${day}`, time: `${hh}:${mm}:${ss}`};
+}
 
-  if (header.includes('symbol') && header.includes('date') && header.includes('time')) {
-    // صيغة Stooq: Symbol,Date,Time,Open,High,Low,Close,Volume
-    for (let i=1;i<lines.length;i++){
-      const [sym,d,t,o,h,l,c] = lines[i].split(',');
-      if (!d || !t) continue;
-      const ts = Date.parse(`${d}T${t}Z`);
-      const open=+o, high=+h, low=+l, close=+c;
+/******** قراءة CSV مرنة ********/
+function parseCsvFlexible(csvText){
+  const lines = csvText.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = lines.shift().split(',').map(h => h.trim().toLowerCase());
+  const idx = (name)=> headers.indexOf(name);
+  const has = (...names)=> names.every(n => idx(n) !== -1);
+
+  const out = [];
+  for (const line of lines){
+    if (!line.trim()) continue;
+    const cols = line.split(',').map(c=>c.trim());
+
+    if (has('date','time','close')){
+      const d = cols[idx('date')];
+      let t = cols[idx('time')] || '00:00:00';
+      if (/^\d{2}:\d{2}$/.test(t)) t += ':00';
+      const ts = Date.parse(`${d}T${t}Z`); // نفترض CSV بالـUTC
+      const close = toNum(cols[idx('close')]);
+      const open  = has('open') ? toNum(cols[idx('open')]) : null;
+      const high  = has('high') ? toNum(cols[idx('high')]) : null;
+      const low   = has('low')  ? toNum(cols[idx('low')])  : null;
+      const vol   = has('volume') ? toNum(cols[idx('volume')]) : null;
       if (Number.isFinite(ts) && Number.isFinite(close)){
-        out.push({
-          ts,
-          open: Number.isFinite(open)?open:close,
-          high: Number.isFinite(high)?high:close,
-          low : Number.isFinite(low )?low :close,
-          close
-        });
+        const {date,time} = fmtLocal(ts);
+        out.push({ts, close, open, high, low, vol, _date:date, _time:time.slice(0,5)});
       }
+    } else if (has('date','close')){
+      const d = cols[idx('date')];
+      const ts = Date.parse(`${d}T00:00:00Z`);
+      const close = toNum(cols[idx('close')]);
+      if (Number.isFinite(ts) && Number.isFinite(close)){
+        const {date,time} = fmtLocal(ts);
+        out.push({ts, close, _date:date, _time:time.slice(0,5)});
+      }
+    } else {
+      const d = cols[0];
+      const close = toNum(cols[1]);
+      const ts = Date.parse(`${d}T00:00:00Z`);
+      if (Number.isFinite(ts) && Number.isFinite(close)){
+        const {date,time} = fmtLocal(ts);
+        out.push({ts, close, _date:date, _time:time.slice(0,5)});
+      }
+    }
+  }
+  return out.sort((a,b)=> a.ts - b.ts);
+}
+
+async function loadCsvBars(url){
+  const res = await fetch(url || DEFAULT_5MIN_CSV_URL, {cache:'no-store'});
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const text = await res.text();
+  const rows = parseCsvFlexible(text);
+  if (!rows.length) throw new Error('CSV فارغ أو غير معروف');
+  return rows;
+}
+
+/******** إعادة تجميع (ساعة/يوم) من 5 دقائق ********/
+function startOfHour(ts){
+  const d = new Date(ts);
+  d.setMinutes(0,0,0);
+  return d.getTime();
+}
+function startOfLocalDay(ts){
+  const d = new Date(ts);
+  d.setHours(0,0,0,0);
+  return d.getTime();
+}
+function resample(bars, kind){ // 'm5' 'h1' 'd1'
+  if (kind === 'm5') return bars;
+  const m = new Map();
+  if (kind === 'h1'){
+    for (const b of bars){
+      const k = startOfHour(b.ts);
+      const g = m.get(k) || {ts:k, open:null, high:-Infinity, low:Infinity, close:null, _date:null, _time:null};
+      g.close = b.close;
+      if (g.open == null) g.open = b.close;
+      g.high = Math.max(g.high, b.high ?? b.close, b.close);
+      g.low  = Math.min(g.low,  b.low  ?? b.close, b.close);
+      const {date,time} = fmtLocal(k);
+      g._date = date; g._time = time.slice(0,5);
+      m.set(k,g);
     }
   } else {
-    // صيغة بسيطة: Date,Close
-    for (let i=1;i<lines.length;i++){
-      const [d,c] = lines[i].split(',');
-      const ts = Date.parse(d);
-      const close = +c;
-      if (Number.isFinite(ts) && Number.isFinite(close)){
-        out.push({ ts, open: close, high: close, low: close, close });
-      }
+    for (const b of bars){
+      const k = startOfLocalDay(b.ts);
+      const g = m.get(k) || {ts:k, open:null, high:-Infinity, low:Infinity, close:null, _date:null, _time:null};
+      g.close = b.close;
+      if (g.open == null) g.open = b.close;
+      g.high = Math.max(g.high, b.high ?? b.close, b.close);
+      g.low  = Math.min(g.low,  b.low  ?? b.close, b.close);
+      const {date,time} = fmtLocal(k);
+      g._date = date; g._time = time.slice(0,5);
+      m.set(k,g);
     }
   }
-
-  out.sort((a,b)=>a.ts-b.ts);
-  return out;
+  return Array.from(m.values()).sort((a,b)=>a.ts-b.ts);
 }
 
-async function fetchCsv(url){
-  const u = (url && url.trim()) ? url.trim() : DEFAULT_5M_CSV;
-  // ضمان https ومسار صحيح
-  const full = u.startsWith('http') ? u : `${u}?t=${Date.now()}`;
-  const r = await fetch(full, {cache:'no-store'});
-  if (!r.ok) throw new Error(`CSV HTTP ${r.status}`);
-  return parseCsv(await r.text());
-}
-
-/* تجميع OHLC */
-function aggregateOHLC(rows, minutes){
-  const bucketMs = minutes*60*1000;
-  const map = new Map();
-  for (const r of rows){
-    const b = Math.floor(r.ts/bucketMs)*bucketMs;
-    let rec = map.get(b);
-    if (!rec){
-      rec = { ts:b, open: r.open, high: r.high, low: r.low, close: r.close };
-      map.set(b, rec);
-    } else {
-      rec.high = Math.max(rec.high, r.high);
-      rec.low  = Math.min(rec.low , r.low);
-      rec.close= r.close;
-    }
-  }
-  return [...map.values()].sort((a,b)=>a.ts-b.ts);
-}
-
-/*--------- مؤشرات ---------*/
-function ema(series, period){
-  const out = new Array(series.length).fill(null);
-  const k = 2/(period+1);
-  let ema=null, sum=0;
-  for (let i=0;i<series.length;i++){
-    const p = series[i].close;
-    if (i<period){ sum+=p; if(i===period-1){ ema=sum/period; out[i]=ema; } }
-    else { ema = p*k + ema*(1-k); out[i]=ema; }
+/******** مؤشرات ********/
+function ema(values, p){
+  const out = Array(values.length).fill(null);
+  if (p <= 1 || values.length === 0) return out;
+  const k = 2 / (p + 1);
+  let prev = values.find(v => Number.isFinite(v));
+  if (prev == null) return out;
+  let i = values.indexOf(prev);
+  out[i] = prev;
+  for (i = i+1; i < values.length; i++){
+    const v = values[i];
+    if (!Number.isFinite(v)) { out[i] = out[i-1]; continue; }
+    prev = v * k + out[i-1] * (1 - k);
+    out[i] = prev;
   }
   return out;
 }
-function rsi(series, period=14){
-  const out = new Array(series.length).fill(null);
-  if (series.length <= period) return out;
-  let gain=0, loss=0;
-  for(let i=1;i<=period;i++){
-    const d = series[i].close - series[i-1].close;
-    if (d>=0) gain+=d; else loss-=d;
+function rsi(values, period=14){
+  const out = Array(values.length).fill(null);
+  if (values.length < period+1) return out;
+  let gains=0, losses=0;
+  for (let i=1;i<=period;i++){
+    const ch = values[i]-values[i-1];
+    gains += Math.max(ch,0);
+    losses += Math.max(-ch,0);
   }
-  let avgG=gain/period, avgL=loss/period;
-  out[period] = avgL===0?100:100-(100/(1+(avgG/avgL)));
-  for(let i=period+1;i<series.length;i++){
-    const d = series[i].close - series[i-1].close;
-    const g = d>0?d:0, l = d<0?-d:0;
-    avgG = (avgG*(period-1)+g)/period;
-    avgL = (avgL*(period-1)+l)/period;
-    out[i] = avgL===0?100:100-(100/(1+(avgG/avgL)));
+  let avgG = gains/period, avgL = losses/period;
+  out[period] = 100 - (100 / (1 + (avgG/(avgL||1e-9))));
+  for (let i=period+1;i<values.length;i++){
+    const ch = values[i]-values[i-1];
+    avgG = (avgG*(period-1) + Math.max(ch,0)) / period;
+    avgL = (avgL*(period-1) + Math.max(-ch,0)) / period;
+    out[i] = 100 - (100 / (1 + (avgG/(avgL||1e-9))));
   }
   return out;
 }
-function macd(series, fast=12, slow=26, signal=9){
-  const emaF = ema(series, fast);
-  const emaS = ema(series, slow);
-  const m = series.map((_,i)=>{
-    if (emaF[i]==null || emaS[i]==null) return null;
-    return emaF[i]-emaS[i];
-  });
-  const pts = m.map((v,i)=>({ts:series[i].ts, close:(v==null)?NaN:v}));
-  const clean = pts.filter(p=>Number.isFinite(p.close));
-  const sigClean = ema(clean, signal);
-  const sigFull = new Array(series.length).fill(null);
-  for(let i=0,j=0;i<series.length;i++){
-    if (Number.isFinite(pts[i]?.close)) sigFull[i]=sigClean[j++];
-  }
-  return { emaF, emaS, macd:m, signal:sigFull };
-}
-function classify(rsiVal, macdVal){
-  if (macdVal==null || rsiVal==null) return 'حيادي';
-  if (macdVal>0 && rsiVal>=50 && rsiVal<=70) return 'شراء';
-  if (macdVal<0 && rsiVal<=50) return 'بيع';
+function decideSignal(macdArr, rsiArr, i){
+  const m = macdArr[i], r = rsiArr[i];
+  if (!Number.isFinite(m) || !Number.isFinite(r)) return 'حيادي';
+  if (m > 0 && r >= 50) return 'شراء';
+  if (m < 0 && r < 50)  return 'بيع';
   return 'حيادي';
 }
 
-/*--------- Pivot ---------*/
-function calcPivots(daily){
-  if (!daily || daily.length<2) return null;
-  const y = daily[daily.length-2];
-  const H=y.high, L=y.low, C=y.close;
-  if (![H,L,C].every(Number.isFinite)) return null;
-  const P=(H+L+C)/3, R1=2*P-L, S1=2*P-H, R2=P+(H-L), S2=P-(H-L), R3=H+2*(P-L), S3=L-2*(H-P);
+/******** Pivot من آخر يوم مكتمل ********/
+function computePivotFrom5min(bars5){
+  if (!bars5.length) return null;
+  // آخر يوم محلي مكتمل = يوم قبل يوم آخر شمعة
+  const lastDay = startOfLocalDay(bars5[bars5.length-1].ts);
+  const prevDay = lastDay - 86400000;
+  const dayRows = bars5.filter(b => startOfLocalDay(b.ts) === prevDay);
+  if (!dayRows.length) return null;
+  const highs = dayRows.map(b => b.high ?? b.close);
+  const lows  = dayRows.map(b => b.low  ?? b.close);
+  const H = Math.max(...highs), L = Math.min(...lows), C = dayRows[dayRows.length-1].close;
+  const P = (H + L + C) / 3;
+  const R1 = 2*P - L, S1 = 2*P - H;
+  const R2 = P + (H - L), S2 = P - (H - L);
+  const R3 = H + 2*(P - L), S3 = L - 2*(H - P);
   return {P,R1,R2,R3,S1,S2,S3};
 }
 
-/*--------- رسم الواجهة ---------*/
-function paintLive(price, iso){
-  if (elLivePrice && Number.isFinite(price)) elLivePrice.textContent = nf2.format(price);
-  if (elLiveTime  && iso)                    elLiveTime.textContent  = fmtTime(iso);
+/******** عرض الجداول ********/
+function renderRecentTable(rows){
+  const tbody = document.querySelector('#recentTable tbody');
+  const lastN = rows.slice(-60).reverse(); // آخر 60
+  tbody.innerHTML = lastN.map(r => `
+    <tr>
+      <td>${r._date}</td>
+      <td>${(r._time||'').slice(0,5)}</td>
+      <td>${en2(r.close)}</td>
+      <td class="${r.signal === 'شراء' ? 'good' : r.signal === 'بيع' ? 'bad' : 'warn'}">${r.signal}</td>
+      <td>${r.rsi!=null ? en2(r.rsi) : ''}</td>
+      <td>${r.macd!=null ? en4(r.macd) : ''}</td>
+      <td>${r.emaF!=null ? en2(r.emaF) : ''}</td>
+    </tr>
+  `).join('');
 }
-function paintIndicators(rsiVal, macdVal, emaFv, emaSv){
-  if (elIndRSI)  elIndRSI.textContent  = Number.isFinite(rsiVal)  ? nf2.format(rsiVal)  : '—';
-  if (elIndMACD) elIndMACD.textContent = Number.isFinite(macdVal) ? nf4.format(macdVal) : '—';
-  if (elIndEMAF) elIndEMAF.textContent = Number.isFinite(emaFv)   ? nf2.format(emaFv)   : '—';
-  if (elIndEMAS) elIndEMAS.textContent = Number.isFinite(emaSv)   ? nf2.format(emaSv)   : '—';
+function setPivot(pv){
+  const set = (id,v)=> document.getElementById(id).textContent = v!=null? en2(v):'—';
+  set('pp', pv?.P); set('r1', pv?.R1); set('r2', pv?.R2); set('r3', pv?.R3);
+  set('s1', pv?.S1); set('s2', pv?.S2); set('s3', pv?.S3);
 }
-function paintSummary(rsiVal, macdVal){
-  if (!elSummaryText) return;
-  const s = classify(rsiVal, macdVal);
-  elSummaryText.textContent = s;
-  elSummaryText.style.color = s==='شراء' ? '#10b981' : s==='بيع' ? '#ef4444' : '#f59e0b';
+function setLive(price, ts){
+  document.getElementById('livePrice').textContent = Number.isFinite(price)? en2(price):'—';
+  const {date,time} = fmtLocal(ts ?? Date.now());
+  document.getElementById('liveTs').textContent = `${date} ${time}`;
 }
-function paintPivots(p){
-  if (!p) return;
-  elPivotP&&(elPivotP.textContent=nf2.format(p.P));
-  elR1&&(elR1.textContent=nf2.format(p.R1));
-  elR2&&(elR2.textContent=nf2.format(p.R2));
-  elR3&&(elR3.textContent=nf2.format(p.R3));
-  elS1&&(elS1.textContent=nf2.format(p.S1));
-  elS2&&(elS2.textContent=nf2.format(p.S2));
-  elS3&&(elS3.textContent=nf2.format(p.S3));
-}
-function paintTable(rows){
-  if (!elRowsBody) return;
-  elRowsBody.innerHTML='';
-  const last = rows.slice(-TABLE_ROWS).reverse();
-  for (const r of last){
-    const s = classify(r.rsi, r.macd);
-    const color = s==='شراء'?'#10b981':s==='بيع'?'#ef4444':'#f59e0b';
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${nf2.format(r.emaF)}</td>
-      <td>${Number.isFinite(r.macd)?nf4.format(r.macd):'—'}</td>
-      <td>${Number.isFinite(r.rsi)?nf2.format(r.rsi):'—'}</td>
-      <td style="color:${color};font-weight:600">${s}</td>
-      <td>${nf2.format(r.price)}</td>
-    `;
-    elRowsBody.appendChild(tr);
-  }
+function setSignalNow(text){
+  const el = document.getElementById('signalNow');
+  el.textContent = text || '—';
+  el.className = text==='شراء'?'good':text==='بيع'?'bad':'warn';
 }
 
-/*--------- التحليل ---------*/
+/******** تشغيل ********/
+const inputUrl = document.getElementById('csvUrl');
+const runBtn   = document.getElementById('runBtn');
+const tabs     = document.getElementById('tfTabs');
+let timeframe = 'm5'; // m5/h1/d1
+tabs.addEventListener('click', (e)=>{
+  const t = e.target.closest('.btn-tab'); if(!t) return;
+  [...tabs.children].forEach(c=>c.classList.remove('active'));
+  t.classList.add('active');
+  timeframe = t.dataset.tf;
+  // إعادة حساب مباشرة بعد تغيير الإطار
+  runAnalysis().catch(()=>{});
+});
+
+async function fetchLive(){
+  try{
+    if (!LIVE_JSON_URL) return;
+    const res = await fetch(LIVE_JSON_URL, {cache:'no-store'});
+    if (!res.ok) throw 0;
+    const j = await res.json();
+    const ts = j.ts ? Number(j.ts) : Date.parse(`${j.date||''}T${(j.time||'00:00:00')}Z`);
+    setLive(j.price ?? j.close, Number.isFinite(ts)? ts : Date.now());
+  }catch{ /* تجاهل */ }
+}
+setInterval(fetchLive, 30000);
+fetchLive(); // أول مرة
+
 async function runAnalysis(){
+  runBtn.disabled = true;
   try{
-    const csvUrl = elCsvInput?.value?.trim() || '';
-    let rows5 = await fetchCsv(csvUrl);           // 5m OHLC(أو Close-only)
-    if (!rows5.length) throw new Error('ملف CSV فارغ');
+    const url = (inputUrl.value || '').trim() || DEFAULT_5MIN_CSV_URL;
+    const baseBars = await loadCsvBars(url);           // 5 دقائق (أو حسب ملفك)
+    const bars5 = resample(baseBars, 'm5');            // تأكيد 5m لاحتساب Pivot
+    setPivot(computePivotFrom5min(bars5));
 
-    // يومي من 5 دقائق
-    const daily = aggregateOHLC(rows5, 1440);
+    const bars = resample(baseBars, timeframe);        // إطار العرض الحالي
+    const closes = bars.map(b=>b.close);
 
-    // اختيار الإطار الزمني
-    let series = rows5;
-    if (currentTF===60)   series = aggregateOHLC(rows5, 60);
-    if (currentTF===1440) series = daily;
+    const emaF = ema(closes, +document.getElementById('emaFast').value || 12);
+    const emaS = ema(closes, +document.getElementById('emaSlow').value || 26);
+    const macd = closes.map((_,i)=> (emaF[i]!=null && emaS[i]!=null)? (emaF[i]-emaS[i]) : null);
+    const rsiA = rsi(closes, +document.getElementById('rsiPeriod').value || 14);
 
-    // مؤشرات
-    const rsiArr  = rsi(series, RSI_PER);
-    const macdObj = macd(series, EMA_FAST, EMA_SLOW, 9);
-
-    // آخر نقطة
-    const i = series.length-1;
-    const priceNow = series[i].close;
-    const rsiNow   = rsiArr[i];
-    const macdNow  = macdObj.macd[i];
-    const emaFnow  = macdObj.emaF[i];
-    const emaSnow  = macdObj.emaS[i];
-
-    paintSummary(rsiNow, macdNow);
-    paintIndicators(rsiNow, macdNow, emaFnow, emaSnow);
-
-    const piv = calcPivots(daily);
-    paintPivots(piv);
-
-    // جدول
-    const tableRows = series.map((p,idx)=>({
-      ts:p.ts, price:p.close, rsi:rsiArr[idx], macd:macdObj.macd[idx], emaF:macdObj.emaF[idx]
+    const view = bars.map((b,i)=> ({
+      _date: b._date, _time: b._time, ts:b.ts,
+      close: b.close,
+      emaF: emaF[i], macd: macd[i], rsi: rsiA[i],
+      signal: decideSignal(macd, rsiA, i)
     }));
-    paintTable(tableRows);
+    renderRecentTable(view);
+
+    // حدّث الملخّص والسعر الحي إذا ناقص
+    const last = view[view.length-1];
+    if (last){
+      setSignalNow(last.signal);
+      if (document.getElementById('livePrice').textContent === '—'){
+        setLive(last.close, last.ts);
+      }
+    }
   }catch(err){
-    alert(`تعذّر تحميل/تحليل البيانات: ${err.message||err}`);
+    alert('تعذّر تحميل/تحليل البيانات.');
     console.error(err);
+  }finally{
+    runBtn.disabled = false;
   }
 }
 
-/*--------- السعر الحي ---------*/
-async function refreshLive(){
-  try{
-    const r = await fetch(LIVE_JSON_URL, {cache:'no-store'});
-    if (!r.ok) throw new Error('HTTP '+r.status);
-    const j = await r.json();
-    if (j && j.ok && Number.isFinite(j.price)){
-      const iso = j.isoTime || (j.date && j.time ? `${j.date}T${j.time}Z` : null);
-      paintLive(j.price, iso);
-    }
-  }catch(e){ console.warn('Live error:', e); }
-}
-
-/*--------- أحداث ---------*/
-elBtnRun?.addEventListener('click', runAnalysis);
-elTf5?.addEventListener('click',  ()=>{ setActiveTF(5);    runAnalysis(); });
-elTf60?.addEventListener('click', ()=>{ setActiveTF(60);   runAnalysis(); });
-elTfD?.addEventListener('click',  ()=>{ setActiveTF(1440); runAnalysis(); });
-
-// حفظ رابط CSV محلياً
-const LS_KEY='gs_csv_url';
-if (elCsvInput){
-  const saved = localStorage.getItem(LS_KEY)||'';
-  if (!elCsvInput.value && saved) elCsvInput.value = saved;
-  elCsvInput.addEventListener('input', ()=>{
-    const v = elCsvInput.value.trim();
-    if (v) localStorage.setItem(LS_KEY, v); else localStorage.removeItem(LS_KEY);
-  });
-}
-
-/*--------- تشغيل ---------*/
-setActiveTF(5);
-runAnalysis();
-refreshLive();
-setInterval(refreshLive, LIVE_REFRESH_SEC*1000);
+runBtn.addEventListener('click', ()=> runAnalysis());
+runAnalysis(); // تشغيل أولي
