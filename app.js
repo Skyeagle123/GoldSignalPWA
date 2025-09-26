@@ -1,11 +1,21 @@
-/************ GoldSignals - app.js (stable + local date/time + Smart opt-in) ************/
-/* نفس ملفّك مع إضافات فقط */
+/************ GoldSignals - app.js (stable + local date/time + Smart opt-in + Advice) ************/
+/* يعمل مع IDs التالية في الـHTML:
+   csvInput, tf5, tf60, tfD, runBtn,
+   livePrice, liveTime, summaryText,
+   indRSI, indMACD, indEMAF, indEMAS,
+   pivotP, r1, r2, r3, s1, s2, s3,
+   rowsBody,
+   useSmart,          // (اختياري) من الإضافة السابقة
+   adviceIn, adviceOut
+*/
 
+/*--------- إعدادات عامة ---------*/
 const LIVE_JSON_URL    = 'https://goldprice-proxy.samer-mourtada.workers.dev/price';
 const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';
 const TABLE_ROWS       = 80;
 const LIVE_REFRESH_SEC = 30;
 
+/*--------- التقاط عناصر الواجهة ---------*/
 const $ = (id) => document.getElementById(id);
 const elCsvInput   = $('csvInput');
 const elTf5        = $('tf5');
@@ -28,13 +38,17 @@ const elS1 = $('s1'), elS2 = $('s2'), elS3 = $('s3');
 
 const elRowsBody = $('rowsBody');
 
-/* مؤشرات قابلة للتعديل */
+/* عناصر اختيارية من إضافات سابقة */
 const elEmaFast   = $('emaFast');
 const elEmaSlow   = $('emaSlow');
 const elRsiPeriod = $('rsiPeriod');
-/* ✅ جديد: خيار تفعيل الإشارات الدقيقة */
 const elUseSmart  = $('useSmart');
 
+/* ✅ عناصر نصيحة الدخول/الخروج (جديدة) */
+const elAdviceIn  = $('adviceIn');
+const elAdviceOut = $('adviceOut');
+
+/* إعدادات المؤشرات */
 let EMA_FAST = parseInt(elEmaFast?.value || '12', 10);
 let EMA_SLOW = parseInt(elEmaSlow?.value || '26', 10);
 let RSI_PER  = parseInt(elRsiPeriod?.value || '14', 10);
@@ -44,12 +58,10 @@ elEmaSlow?.addEventListener('input', ()=> EMA_SLOW = parseInt(elEmaSlow.value||'
 elRsiPeriod?.addEventListener('input',()=> RSI_PER  = parseInt(elRsiPeriod.value||'14',10));
 elUseSmart?.addEventListener('change', ()=> runAnalysis());
 
-/* تنسيقات أرقام/وقت */
+/*--------- تنسيقات أرقام/وقت ---------*/
 const nf2 = new Intl.NumberFormat('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 const nf4 = new Intl.NumberFormat('en-US', {minimumFractionDigits:4, maximumFractionDigits:4});
 const fmtTime = (iso) => { try { return new Date(iso).toISOString().replace('T',' ').replace('Z',''); } catch { return String(iso); } };
-
-/* ✅ موجود عندك: تنسيق محلي للجدول */
 function fmtLocal(ts){
   const d  = new Date(ts);
   const y  = d.getFullYear();
@@ -60,6 +72,7 @@ function fmtLocal(ts){
   return { date: `${y}-${m}-${dd}`, time: `${hh}:${mm}` };
 }
 
+/*--------- حالة الإطار الزمني ---------*/
 let currentTF = 5;
 function setActiveTF(tf){
   currentTF = tf;
@@ -69,7 +82,7 @@ function setActiveTF(tf){
   if (tf===1440) elTfD?.classList?.add('active');
 }
 
-/* CSV helpers (نفسك) */
+/*--------- CSV helpers ---------*/
 function parseCsv(text){
   const lines = text.trim().split(/\r?\n/);
   if (!lines.length) return [];
@@ -77,6 +90,7 @@ function parseCsv(text){
   const out = [];
 
   if (header.includes('symbol') && header.includes('date') && header.includes('time')) {
+    // Symbol,Date,Time,Open,High,Low,Close,Volume
     for (let i=1;i<lines.length;i++){
       const [sym,d,t,o,h,l,c] = lines[i].split(',');
       if (!d || !t) continue;
@@ -93,6 +107,7 @@ function parseCsv(text){
       }
     }
   } else {
+    // Date,Close
     for (let i=1;i<lines.length;i++){
       const [d,c] = lines[i].split(',');
       const ts = Date.parse(d);
@@ -131,15 +146,15 @@ function aggregateOHLC(rows, minutes){
   return [...map.values()].sort((a,b)=>a.ts-b.ts);
 }
 
-/* مؤشرات (نفسك) */
+/*--------- مؤشرات ---------*/
 function ema(series, period){
   const out = new Array(series.length).fill(null);
   const k = 2/(period+1);
-  let ema=null, sum=0;
+  let e=null, sum=0;
   for (let i=0;i<series.length;i++){
     const p = series[i].close;
-    if (i<period){ sum+=p; if(i===period-1){ ema=sum/period; out[i]=ema; } }
-    else { ema = p*k + ema*(1-k); out[i]=ema; }
+    if (i<period){ sum+=p; if(i===period-1){ e=sum/period; out[i]=e; } }
+    else { e = p*k + e*(1-k); out[i]=e; }
   }
   return out;
 }
@@ -185,7 +200,7 @@ function classify(rsiVal, macdVal){
   return 'حيادي';
 }
 
-/* Pivot */
+/*--------- Pivot ---------*/
 function calcPivots(daily){
   if (!daily || daily.length<2) return null;
   const y = daily[daily.length-2];
@@ -195,25 +210,7 @@ function calcPivots(daily){
   return {P,R1,R2,R3,S1,S2,S3};
 }
 
-/* رسم واجهة (نفسك + تعديل بسيط بالجدول ليستعمل sig لو موجود) */
-function paintLive(price, iso){
-  if (elLivePrice && Number.isFinite(price)) elLivePrice.textContent = nf2.format(price);
-  if (elLiveTime  && iso)                    elLiveTime.textContent  = fmtTime(iso);
-}
-function paintIndicators(rsiVal, macdVal, emaFv, emaSv){
-  if (elIndRSI)  elIndRSI.textContent  = Number.isFinite(rsiVal)  ? nf2.format(rsiVal)  : '—';
-  if (elIndMACD) elIndMACD.textContent = Number.isFinite(macdVal) ? nf4.format(macdVal) : '—';
-  if (elIndEMAF) elIndEMAF.textContent = Number.isFinite(emaFv)   ? nf2.format(emaFv)   : '—';
-  if (elIndEMAS) elIndEMAS.textContent = Number.isFinite(emaSv)   ? nf2.format(emaSv)   : '—';
-}
-function paintSummary(rsiVal, macdVal){
-  if (!elSummaryText) return;
-  const s = classify(rsiVal, macdVal);
-  elSummaryText.textContent = s;
-  elSummaryText.style.color = s==='شراء' ? '#10b981' : s==='بيع' ? '#ef4444' : '#f59e0b';
-}
-
-/* ✅ دوال مساعدة للإشارة الدقيقة (إضافة فقط) */
+/*--------- Helpers للإشارات الدقيقة (موجودة إن كنت مفعّل Smart) ---------*/
 function crossUp(a, b, i){ return i>0 && a[i-1]!=null && b[i-1]!=null && a[i-1] <= b[i-1] && a[i] > b[i]; }
 function crossDown(a,b,i){ return i>0 && a[i-1]!=null && b[i-1]!=null && a[i-1] >= b[i-1] && a[i] < b[i]; }
 function atr(series, period=14){
@@ -263,6 +260,83 @@ function smartClassify(idx, tfSeries, rsiArr, macdObj, pivots, ctx){
   return 'حيادي';
 }
 
+/*--------- دوال نصيحة الدخول/الخروج (جديدة) ---------*/
+function swingHL(series, idx, lookback=12){
+  const start = Math.max(0, idx - lookback + 1);
+  let hi = -Infinity, lo = Infinity;
+  for (let i=start; i<=idx; i++){
+    const h = Number.isFinite(series[i].high) ? series[i].high : series[i].close;
+    const l = Number.isFinite(series[i].low ) ? series[i].low  : series[i].close;
+    if (h>hi) hi=h;
+    if (l<lo) lo=l;
+  }
+  return {hi, lo};
+}
+function makeAdvice(sig, series, idx, atrV, piv, emaFv){
+  const price = series[idx].close;
+  const {hi, lo} = swingHL(series, idx, 12);
+  const atrOk = Number.isFinite(atrV) ? atrV : (price*0.003); // fallback بسيط
+  const emaOk = Number.isFinite(emaFv) ? emaFv : price;
+
+  let entry='—', exit='—';
+
+  if (sig==='شراء'){
+    const entryBreak = hi + 0.1*atrOk;
+    const entryPull  = emaOk; // ارتداد قرب EMA السريع
+    const sl         = (lo - 1.2*atrOk);
+    let tp1, tp2;
+    if (piv){
+      tp1 = piv.R1 ?? (price + 1*atrOk);
+      tp2 = piv.R2 ?? (price + 2*atrOk);
+    } else {
+      tp1 = price + 1*atrOk;
+      tp2 = price + 2*atrOk;
+    }
+    entry = `دخول عند اختراق ${nf2.format(entryBreak)} أو ارتداد قرب EMA ${nf2.format(entryPull)}.`;
+    exit  = `وقف: ${nf2.format(sl)} • أهداف: ${nf2.format(tp1)} ثم ${nf2.format(tp2)}${piv ? ' (Pivot)' : ''}.`;
+  } else if (sig==='بيع'){
+    const entryBreak = lo - 0.1*atrOk;
+    const entryPull  = emaOk;
+    const sl         = (hi + 1.2*atrOk);
+    let tp1, tp2;
+    if (piv){
+      tp1 = piv.S1 ?? (price - 1*atrOk);
+      tp2 = piv.S2 ?? (price - 2*atrOk);
+    } else {
+      tp1 = price - 1*atrOk;
+      tp2 = price - 2*atrOk;
+    }
+    entry = `دخول عند كسر ${nf2.format(entryBreak)} أو ارتداد قرب EMA ${nf2.format(entryPull)}.`;
+    exit  = `وقف: ${nf2.format(sl)} • أهداف: ${nf2.format(tp1)} ثم ${nf2.format(tp2)}${piv ? ' (Pivot)' : ''}.`;
+  } else {
+    entry = 'لا توجد إشارة واضحة: انتظر تقاطع MACD أو عبور RSI 50 مع اتجاه أعلى داعم.';
+    exit  = 'ابقَ على الحياد/أعد التقييم عند Pivot التالي أو تغيّر واضح بالتذبذب.';
+  }
+
+  return { entry, exit };
+}
+function paintAdvice(entryText, exitText){
+  if (elAdviceIn)  elAdviceIn.textContent  = entryText || '—';
+  if (elAdviceOut) elAdviceOut.textContent = exitText  || '—';
+}
+
+/*--------- رسم الواجهة ---------*/
+function paintLive(price, iso){
+  if (elLivePrice && Number.isFinite(price)) elLivePrice.textContent = nf2.format(price);
+  if (elLiveTime  && iso)                    elLiveTime.textContent  = fmtTime(iso);
+}
+function paintIndicators(rsiVal, macdVal, emaFv, emaSv){
+  if (elIndRSI)  elIndRSI.textContent  = Number.isFinite(rsiVal)  ? nf2.format(rsiVal)  : '—';
+  if (elIndMACD) elIndMACD.textContent = Number.isFinite(macdVal) ? nf4.format(macdVal) : '—';
+  if (elIndEMAF) elIndEMAF.textContent = Number.isFinite(emaFv)   ? nf2.format(emaFv)   : '—';
+  if (elIndEMAS) elIndEMAS.textContent = Number.isFinite(emaSv)   ? nf2.format(emaSv)   : '—';
+}
+function paintSummary(rsiVal, macdVal){
+  if (!elSummaryText) return;
+  const s = classify(rsiVal, macdVal);
+  elSummaryText.textContent = s;
+  elSummaryText.style.color = s==='شراء' ? '#10b981' : s==='بيع' ? '#ef4444' : '#f59e0b';
+}
 function paintPivots(p){
   if (!p) return;
   elPivotP&&(elPivotP.textContent=nf2.format(p.P));
@@ -274,17 +348,24 @@ function paintPivots(p){
   elS3&&(elS3.textContent=nf2.format(p.S3));
 }
 
-/* ✅ تعديل طفيف: استعمل r.sig لو موجود */
+/* ✅ الجدول مع التاريخ/الوقت المحليين + إنشاء thead تلقائيًا */
 function paintTable(rows){
   if (!elRowsBody) return;
 
   const table = elRowsBody.closest('table');
   if (table && !table.querySelector('thead')){
     table.insertAdjacentHTML('afterbegin', `
-      <thead><tr>
-        <th>التاريخ</th><th>الوقت (محلي)</th><th>السعر</th>
-        <th>الإشارة</th><th>RSI</th><th>MACD</th><th>EMA F</th>
-      </tr></thead>
+      <thead>
+        <tr>
+          <th>التاريخ</th>
+          <th>الوقت (محلي)</th>
+          <th>السعر</th>
+          <th>الإشارة</th>
+          <th>RSI</th>
+          <th>MACD</th>
+          <th>EMA F</th>
+        </tr>
+      </thead>
     `);
   }
 
@@ -294,6 +375,7 @@ function paintTable(rows){
     const s = r.sig || classify(r.rsi, r.macd);
     const color = s==='شراء'?'#10b981':s==='بيع'?'#ef4444':'#f59e0b';
     const { date, time } = fmtLocal(r.ts);
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${date}</td>
@@ -308,7 +390,7 @@ function paintTable(rows){
   }
 }
 
-/* التحليل (أضفنا بس حسابات إضافية لو الخيار شغّال) */
+/*--------- التحليل ---------*/
 async function runAnalysis(){
   try{
     const csvUrl = elCsvInput?.value?.trim() || '';
@@ -324,25 +406,22 @@ async function runAnalysis(){
     const rsiArr  = rsi(series, RSI_PER);
     const macdObj = macd(series, EMA_FAST, EMA_SLOW, 9);
 
-    /* ✅ تجهيز سياق الإشارات الدقيقة (ADD-ONLY) */
+    /* Smart سياق (إذا مفعّل) */
     const useSmart = !!(elUseSmart && elUseSmart.checked);
-    let ctx=null, piv=null, series60=null, ema200_60=null, ema200_D=null, atrArr=null;
+    let ctx=null, piv=null, series60=null, ema200_60=null, ema200_D=null, atrArrAdvice=null;
     if (useSmart){
       series60   = aggregateOHLC(rows5, 60);
       ema200_60  = ema(series60, 200);
       ema200_D   = ema(daily, 200);
-      atrArr     = atr(series, 14);
-      piv        = calcPivots(daily);
       ctx = {
-        atr: atrArr,
+        atr: atr(series, 14),
         trend1hUp:    series60.length && ema200_60.length ? (series60.at(-1).close  > ema200_60.at(-1)) : true,
         trend1hDown:  series60.length && ema200_60.length ? (series60.at(-1).close  < ema200_60.at(-1)) : true,
         trendDailyUp: daily.length  && ema200_D.length  ? (daily.at(-1).close   > ema200_D.at(-1))  : true,
         trendDailyDown:daily.length && ema200_D.length  ? (daily.at(-1).close   < ema200_D.at(-1))  : true
       };
-    } else {
-      piv = calcPivots(daily);
     }
+    piv = calcPivots(daily);
 
     const i = series.length-1;
     const priceNow = series[i].close;
@@ -351,11 +430,11 @@ async function runAnalysis(){
     const emaFnow  = macdObj.emaF[i];
     const emaSnow  = macdObj.emaS[i];
 
-    paintSummary(rsiNow, macdNow); // الألوان تبع الملخص
+    paintSummary(rsiNow, macdNow);
     paintIndicators(rsiNow, macdNow, emaFnow, emaSnow);
     paintPivots(piv);
 
-    /* صفوف الجدول + إشارة ذكية اختيارية */
+    /* جدول */
     const tableRows = series.map((p,idx)=>{
       const base = {
         ts:p.ts, price:p.close, rsi:rsiArr[idx],
@@ -366,21 +445,26 @@ async function runAnalysis(){
       }
       return base;
     });
-
-    /* لو خيار “Smart” مفعّل، عرِضه في الملخّص النصّي */
-    if (useSmart){
-      const lastSig = tableRows.at(-1)?.sig || classify(rsiNow, macdNow);
-      if (elSummaryText) elSummaryText.textContent = lastSig;
-    }
-
     paintTable(tableRows);
+
+    /* ✅ نصيحة دخول/خروج بناءً على آخر شمعه */
+    // الإشارة المستخدمة: smart إذا مفعّل، وإلا التقليدية
+    const lastSig = (useSmart ? (tableRows.at(-1)?.sig) : null) || classify(rsiNow, macdNow);
+    // ATR خاص بالنصيحة حتى لو Smart مش مفعّل
+    atrArrAdvice = atr(series, 14);
+    const adv = makeAdvice(lastSig, series, i, atrArrAdvice[i], piv, emaFnow);
+    paintAdvice(adv.entry, adv.exit);
+
+    // لو Smart مفعّل، عرِض الإشارة الذكية بالنص (الألوان تبقى حسب القيم)
+    if (useSmart && elSummaryText) elSummaryText.textContent = lastSig;
+
   }catch(err){
     alert(`تعذّر تحميل/تحليل البيانات: ${err.message||err}`);
     console.error(err);
   }
 }
 
-/* السعر الحي (كما هو) */
+/*--------- السعر الحي ---------*/
 async function refreshLive(){
   try{
     const r = await fetch(LIVE_JSON_URL, {cache:'no-store'});
@@ -393,12 +477,13 @@ async function refreshLive(){
   }catch(e){ console.warn('Live error:', e); }
 }
 
-/* أحداث */
+/*--------- أحداث ---------*/
 elBtnRun?.addEventListener('click', runAnalysis);
 elTf5?.addEventListener('click',  ()=>{ setActiveTF(5);    runAnalysis(); });
 elTf60?.addEventListener('click', ()=>{ setActiveTF(60);   runAnalysis(); });
 elTfD?.addEventListener('click',  ()=>{ setActiveTF(1440); runAnalysis(); });
 
+// حفظ رابط CSV محلياً
 const LS_KEY='gs_csv_url';
 if (elCsvInput){
   const saved = localStorage.getItem(LS_KEY)||'';
@@ -409,7 +494,7 @@ if (elCsvInput){
   });
 }
 
-/* تشغيل */
+/*--------- تشغيل ---------*/
 setActiveTF(5);
 runAnalysis();
 refreshLive();
