@@ -1,17 +1,18 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b1220">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1220" />
   <title>إشارات الذهب • GoldSignals</title>
-  <link rel="icon" href="icons/icon-192.png">
+  <link rel="icon" href="icons/icon-192.png" />
   <style>
     :root{
       --bg:#0b1220; --card:#111827; --line:#1f2937; --muted:#9ca3af; --soft:#334155;
       --good:#10b981; --bad:#ef4444; --warn:#f59e0b; --txt:#e5e7eb;
     }
-    html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif}
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif}
     header{position:sticky;top:0;z-index:5;background:#0b1220cc;border-bottom:1px solid var(--line);backdrop-filter:blur(6px)}
     .bar{max-width:1100px;margin:0 auto;padding:14px 16px;font-weight:700}
     .container{max-width:1100px;margin:0 auto;padding:16px}
@@ -26,12 +27,12 @@
     h1,h2,h3{margin:0 0 10px 0}
     table{width:100%;border-collapse:collapse}
     th,td{border-bottom:1px solid #273449;padding:10px;text-align:center}
+    th{color:var(--muted);font-weight:600}
     .muted{color:var(--muted)}
     .good{color:var(--good);font-weight:600}
     .bad{color:var(--bad);font-weight:600}
     .warn{color:var(--warn);font-weight:600}
     .section-title{margin-bottom:6px}
-    canvas{display:block;width:100%}
   </style>
 </head>
 <body>
@@ -39,14 +40,14 @@
 
   <div class="container">
 
-    <!-- مصدر البيانات + الإطار الزمني -->
+    <!-- المصدر + الإطار الزمني -->
     <div class="card">
       <div class="grid">
         <div>
           <label>رابط CSV للأسعار (اختياري):</label>
-          <input id="csvInput" placeholder="اتركه فاضي لاستعمال XAUUSD_5min.csv من نفس الريبو">
+          <input id="csvInput" placeholder="اتركه فاضي لاستعمال XAUUSD_5min.csv من نفس الريبو" />
           <div class="muted" style="margin-top:6px;font-size:12px">
-            إذا تركته فاضي سيقرأ تلقائياً من <code>XAUUSD_5min.csv</code>.
+            إذا تركته فاضي سيقرأ تلقائيًا من <code>XAUUSD_5min.csv</code>.
           </div>
         </div>
         <div>
@@ -76,43 +77,42 @@
       </div>
     </div>
 
-    <!-- المؤشرات السريعة -->
+    <!-- المؤشرات -->
     <div class="card">
       <h3 class="section-title">جدول المؤشرات</h3>
-      <div class="grid">
+      <div class="grid" style="margin-bottom:10px">
         <div>RSI: <b id="indRSI">—</b></div>
         <div>MACD: <b id="indMACD">—</b></div>
         <div>EMA سريع: <b id="indEMAF">—</b></div>
         <div>EMA بطيء: <b id="indEMAS">—</b></div>
       </div>
-
-      <div class="grid" style="margin-top:10px">
-        <div><label>EMA سريع</label><input id="emaFast" type="number" value="12"></div>
-        <div><label>EMA بطيء</label><input id="emaSlow" type="number" value="26"></div>
-        <div><label>فترة RSI</label><input id="rsiPeriod" type="number" value="14"></div>
+      <div class="grid">
+        <div><label>EMA سريع</label><input id="emaFast" type="number" value="12" /></div>
+        <div><label>EMA بطيء</label><input id="emaSlow" type="number" value="26" /></div>
+        <div><label>فترة RSI</label><input id="rsiPeriod" type="number" value="14" /></div>
       </div>
     </div>
 
     <!-- نصيحة الدخول/الخروج -->
     <div class="card">
-      <h3 class="section-title">نصيحة الدخول والخروج</h3>
       <div id="adviceIn"  style="margin-bottom:6px">—</div>
       <div id="adviceOut" class="muted">—</div>
-      <div class="muted" style="margin-top:8px;font-size:12px">
-        * تعتمد على EMA و ATR و Pivot وآخر قمم/قيعان. ليست نصيحة استثمارية.
+      <div class="muted" style="margin-top:10px;font-size:12px">
+        * تعتمد على EMA و ATR و Pivot و آخر قمم/قيعان. ليست نصيحة استثمارية.
       </div>
     </div>
 
-    <!-- الرسم البياني مع خطوط Entry/SL/TP -->
+    <!-- الرسم البياني (Canvas) -->
     <div class="card">
-      <h3 class="section-title">(SL/TP/دخول/خروج) الرسم البياني</h3>
-      <canvas id="gsChart" height="320"></canvas>
-      <div class="muted" style="margin-top:8px;font-size:12px">
-        الأزرق = خطوط للدخول (اختراق/ارتداد EMA) • الأخضر = أهداف (TP1/TP2) • الأحمر = وقف الخسارة
+      <h3 class="section-title">(SL/TP) الرسم البياني (دخول/خروج)</h3>
+      <!-- مهم: نعطي ارتفاع واضح حتى لا يصبح ارتفاعه 0 -->
+      <canvas id="gsChart" style="width:100%; height:320px; display:block;"></canvas>
+      <div class="muted" style="margin-top:10px;font-size:12px">
+        الأزرق = خطوط للدخول (اختراق/ارتداد EMA) • الأخضر = أهداف (TP1/TP2) • الأحمر = وقف الخسارة.
       </div>
     </div>
 
-    <!-- Pivot -->
+    <!-- Pivot والدعم/المقاومة -->
     <div class="card">
       <h3 class="section-title">الدعم والمقاومة (Pivot)</h3>
       <div class="grid">
@@ -124,10 +124,12 @@
         <div>S2 <div id="s2">—</div></div>
         <div>S3 <div id="s3">—</div></div>
       </div>
-      <p class="muted" style="margin-top:8px">يُحسب الـ Pivot من آخر يوم مكتمل باستخدام (High/Low/Close) المستخرجة من بيانات 5 دقائق.</p>
+      <p class="muted" style="margin-top:8px">
+        يُحسب الـ Pivot من آخر يوم مكتمل باستخدام (High/Low/Close) المستخرجة من بيانات 5 دقائق.
+      </p>
     </div>
 
-    <!-- البيانات الأخيرة -->
+    <!-- البيانات الأخيرة: تاريخ محلي + وقت محلي + السعر + الإشارة + المؤشرات -->
     <div class="card">
       <h3 class="section-title">البيانات الأخيرة</h3>
       <div style="overflow:auto">
@@ -148,9 +150,12 @@
       </div>
     </div>
 
-    <p class="muted" style="font-size:12px">* هذا المشروع لأغراض تعليمية، وليست نصيحة استثمارية.</p>
+    <p class="muted" style="font-size:12px">
+      * هذا المشروع لأغراض تعليمية، وليست نصيحة استثمارية.
+    </p>
   </div>
 
+  <!-- سكربت التطبيق -->
   <script src="app.js"></script>
 </body>
 </html>
