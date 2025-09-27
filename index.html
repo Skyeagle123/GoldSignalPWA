@@ -31,6 +31,7 @@
     .bad{color:var(--bad);font-weight:600}
     .warn{color:var(--warn);font-weight:600}
     .section-title{margin-bottom:6px}
+    canvas{display:block;width:100%}
   </style>
 </head>
 <body>
@@ -85,7 +86,6 @@
         <div>EMA بطيء: <b id="indEMAS">—</b></div>
       </div>
 
-      <!-- إعدادات المؤشرات -->
       <div class="grid" style="margin-top:10px">
         <div><label>EMA سريع</label><input id="emaFast" type="number" value="12"></div>
         <div><label>EMA بطيء</label><input id="emaSlow" type="number" value="26"></div>
@@ -93,7 +93,26 @@
       </div>
     </div>
 
-    <!-- Pivot والدعم/المقاومة -->
+    <!-- نصيحة الدخول/الخروج -->
+    <div class="card">
+      <h3 class="section-title">نصيحة الدخول والخروج</h3>
+      <div id="adviceIn"  style="margin-bottom:6px">—</div>
+      <div id="adviceOut" class="muted">—</div>
+      <div class="muted" style="margin-top:8px;font-size:12px">
+        * تعتمد على EMA و ATR و Pivot وآخر قمم/قيعان. ليست نصيحة استثمارية.
+      </div>
+    </div>
+
+    <!-- الرسم البياني مع خطوط Entry/SL/TP -->
+    <div class="card">
+      <h3 class="section-title">(SL/TP/دخول/خروج) الرسم البياني</h3>
+      <canvas id="gsChart" height="320"></canvas>
+      <div class="muted" style="margin-top:8px;font-size:12px">
+        الأزرق = خطوط للدخول (اختراق/ارتداد EMA) • الأخضر = أهداف (TP1/TP2) • الأحمر = وقف الخسارة
+      </div>
+    </div>
+
+    <!-- Pivot -->
     <div class="card">
       <h3 class="section-title">الدعم والمقاومة (Pivot)</h3>
       <div class="grid">
@@ -105,9 +124,7 @@
         <div>S2 <div id="s2">—</div></div>
         <div>S3 <div id="s3">—</div></div>
       </div>
-      <p class="muted" style="margin-top:8px">
-        يُحسب الـ Pivot من آخر يوم مكتمل باستخدام (High/Low/Close) المستخرجة من بيانات 5 دقائق.
-      </p>
+      <p class="muted" style="margin-top:8px">يُحسب الـ Pivot من آخر يوم مكتمل باستخدام (High/Low/Close) المستخرجة من بيانات 5 دقائق.</p>
     </div>
 
     <!-- البيانات الأخيرة -->
@@ -122,6 +139,8 @@
               <th>السعر</th>
               <th>الإشارة</th>
               <th>RSI</th>
+              <th>MACD</th>
+              <th>EMA F</th>
             </tr>
           </thead>
           <tbody id="rowsBody"></tbody>
@@ -129,9 +148,7 @@
       </div>
     </div>
 
-    <p class="muted" style="font-size:12px">
-      * هذا المشروع لأغراض تعليمية، وليست نصيحة استثمارية.
-    </p>
+    <p class="muted" style="font-size:12px">* هذا المشروع لأغراض تعليمية، وليست نصيحة استثمارية.</p>
   </div>
 
   <script src="app.js"></script>
