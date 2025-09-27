@@ -31,6 +31,10 @@
     .bad{color:var(--bad);font-weight:600}
     .warn{color:var(--warn);font-weight:600}
     .section-title{margin-bottom:6px}
+
+    /* ارتفاع الشارت مستقرّ بين الأطر الزمنية */
+    .chartWrap{position:relative;height:320px}
+    @media (min-width: 900px){ .chartWrap{height:420px} }
   </style>
 </head>
 <body>
@@ -85,24 +89,22 @@
         <div>EMA بطيء: <b id="indEMAS">—</b></div>
       </div>
 
-      <!-- إعدادات المؤشرات (قابلة للتعديل) -->
       <div class="grid" style="margin-top:10px">
         <div><label>EMA سريع</label><input id="emaFast" type="number" value="12"></div>
         <div><label>EMA بطيء</label><input id="emaSlow" type="number" value="26"></div>
         <div><label>فترة RSI</label><input id="rsiPeriod" type="number" value="14"></div>
-
-        <!-- ✅ إضافة جديدة فقط: تفعيل الإشارات الدقيقة -->
-        <div>
-          <label>الإشارات الدقيقة (تجريبية)</label>
-          <label style="display:flex;align-items:center;gap:8px">
-            <input id="useSmart" type="checkbox"> تفعيل
-          </label>
-          <div class="muted" style="font-size:12px">تستخدم اتّجاه أعلى (1س/يومي) + ATR + Pivot لتقليل الإشارات الكاذبة.</div>
-        </div>
       </div>
     </div>
 
-    <!-- Pivot والدعم/المقاومة -->
+    <!-- (جديد) الرسم البياني -->
+    <div class="card">
+      <h3 class="section-title">الرسم البياني</h3>
+      <div class="chartWrap">
+        <canvas id="priceChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Pivot -->
     <div class="card">
       <h3 class="section-title">الدعم والمقاومة (Pivot)</h3>
       <div class="grid">
@@ -114,36 +116,9 @@
         <div>S2 <div id="s2">—</div></div>
         <div>S3 <div id="s3">—</div></div>
       </div>
-      <p class="muted" style="margin-top:8px">
-        يُحسب الـ Pivot من آخر يوم مكتمل باستخدام (High/Low/Close) المستخرجة من بيانات 5 دقائق.
-      </p>
+      <p class="muted" style="margin-top:8px">يُحسب الـ Pivot من آخر يوم مكتمل باستخدام (High/Low/Close) المستخرجة من بيانات 5 دقائق.</p>
     </div>
-    
-<!-- نصيحة الدخول/الخروج -->
-<div class="card">
-  <h3 class="section-title">نصيحة الدخول/الخروج (تجريبية)</h3>
-  <div class="grid">
-    <div>
-      <label>نصيحة الدخول:</label>
-      <div id="adviceIn">—</div>
-    </div>
-    <div>
-      <label>نصيحة الخروج:</label>
-      <div id="adviceOut">—</div>
-    </div>
-  </div>
-  <p class="muted" style="margin-top:8px;font-size:12px">
-    * تعتمد على ATR وPivot وآخر قمم/قيعان. ليست نصيحة استثمارية.
-  </p>
-</div>
-    <!-- الرسم البياني مع خطوط الدخول/الخروج -->
-<div class="card">
-  <h3 class="section-title">الرسم البياني (دخول/خروج/SL/TP)</h3>
-  <canvas id="gsChart" height="320" style="width:100%"></canvas>
-  <div class="muted" style="font-size:12px;margin-top:6px">
-    الأزرق = خطوط الدخول (اختراق/ارتداد EMA) • الأخضر = أهداف (TP1/TP2) • الأحمر = وقف الخسارة
-  </div>
-</div>
+
     <!-- البيانات الأخيرة -->
     <div class="card">
       <h3 class="section-title">البيانات الأخيرة</h3>
@@ -151,13 +126,11 @@
         <table>
           <thead>
             <tr>
-              <th>التاريخ</th>
-              <th>الوقت (محلي)</th>
-              <th>السعر</th>
-              <th>الإشارة</th>
-              <th>RSI</th>
-              <th>MACD</th>
               <th>EMA F</th>
+              <th>MACD</th>
+              <th>RSI</th>
+              <th>الإشارة</th>
+              <th>السعر</th>
             </tr>
           </thead>
           <tbody id="rowsBody"></tbody>
@@ -168,6 +141,9 @@
     <p class="muted" style="font-size:12px">* هذا المشروع لأغراض تعليمية، وليست نصيحة استثمارية.</p>
   </div>
 
+  <!-- Chart.js (للرسم) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- سكربت التطبيق -->
   <script src="app.js"></script>
 </body>
 </html>
