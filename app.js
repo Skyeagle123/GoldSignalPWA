@@ -1,10 +1,10 @@
-/************ GoldSignals - app.js (stable + chart overlays) ************/
+/************ GoldSignals - app.js (stable + chart fix) ************/
 /* يعمل مع IDs التالية في الـHTML:
    csvInput, tf5, tf60, tfD, runBtn,
    livePrice, liveTime, summaryText,
    indRSI, indMACD, indEMAF, indEMAS,
    pivotP, r1, r2, r3, s1, s2, s3,
-   rowsBody, priceChart (للرسم)
+   rowsBody, gsChart
 */
 
 /*--------- إعدادات عامة ---------*/
@@ -12,6 +12,7 @@ const LIVE_JSON_URL    = 'https://goldprice-proxy.samer-mourtada.workers.dev/pri
 const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';   // إذا تركت الحقل فاضي
 const TABLE_ROWS       = 80;
 const LIVE_REFRESH_SEC = 30;
+const CHART_POINTS     = 150; // عدد الشموع المرسومة
 
 /*--------- التقاط عناصر الواجهة ---------*/
 const $ = (id) => document.getElementById(id);
@@ -280,10 +281,8 @@ async function runAnalysis(){
     }));
     paintTable(tableRows);
 
-    /* -------- (جديد) ارسم الشارت مع مستويات Entry/SL/TP -------- */
-    const signalTxt = classify(rsiNow, macdNow);
-    const levels = buildLevels(signalTxt, emaFnow, piv, priceNow);
-    drawChart(series.slice(-200), levels);
+    // رسم الشارت (تصليح القياس فقط)
+    drawChart(series);
 
   }catch(err){
     alert(`تعذّر تحميل/تحليل البيانات: ${err.message||err}`);
@@ -328,98 +327,105 @@ refreshLive();
 setInterval(refreshLive, LIVE_REFRESH_SEC*1000);
 
 /* ===================================================== */
-/*        مستويات الدخول/الوقف/الأهداف + رسم الشارت       */
+/*                تصليح رسم الشارت فقط                   */
 /* ===================================================== */
-function buildLevels(signalTxt, emaFnow, piv, priceNow){
-  if (!Number.isFinite(emaFnow) || !Number.isFinite(priceNow)) return null;
-  // قواعد بسيطة متوافقة مع الصور السابقة:
-  // شراء: Entry = EMAF، SL = S1، TP1 = R1، TP2 = R2
-  // بيع:  Entry = EMAF، SL = R1، TP1 = S1، TP2 = S2
-  const isBuy = signalTxt === 'شراء';
-  const entry = emaFnow;
 
-  let sl, tp1, tp2;
-  if (isBuy){
-    sl  = piv?.S1 ?? priceNow * 0.992;
-    tp1 = piv?.R1 ?? priceNow * 1.006;
-    tp2 = piv?.R2 ?? priceNow * 1.012;
-  }else if (signalTxt === 'بيع'){
-    sl  = piv?.R1 ?? priceNow * 1.008;
-    tp1 = piv?.S1 ?? priceNow * 0.994;
-    tp2 = piv?.S2 ?? priceNow * 0.988;
-  }else{
-    // حيادي: رجّع خطوط خفيفة حول السعر
-    sl = priceNow * 0.995;
-    tp1 = priceNow * 1.005;
-    tp2 = priceNow * 1.010;
+// يقرأ ارتفاع الكانفاس الحقيقي من الـDOM/الـCSS لو تغيّر بين الأطر الزمنية
+function getCanvasCssHeight(canvas, fallback=320){
+  let cssH = canvas.getBoundingClientRect?.().height;
+  if (!cssH || cssH < 120) {
+    const st = typeof getComputedStyle === 'function' ? getComputedStyle(canvas) : null;
+    const h  = st ? parseFloat(st.height) : NaN;
+    cssH = Number.isFinite(h) && h > 0 ? h : fallback;
   }
-  return { entry, sl, tp1, tp2 };
+  return cssH;
 }
 
-let priceChart = null;
-function drawChart(series, levels){
-  try{
-    const canvas = document.getElementById('priceChart');
-    if (!canvas || !Array.isArray(series) || !series.length) return;
+function drawChart(series){
+  const canvas = document.getElementById('gsChart');
+  if (!canvas || !Array.isArray(series) || !series.length) return;
 
-    const labels = series.map(p => new Date(p.ts));
-    const data   = series.map(p => p.close);
+  // ثبّت الحجم + صفّر التحويلات كل مرة (Fix التمدد)
+  const dpr  = Math.max(1, window.devicePixelRatio || 1);
+  const cssW = canvas.clientWidth || canvas.parentElement?.clientWidth || 800;
+  const cssH = getCanvasCssHeight(canvas, canvas.getAttribute('height') ? parseFloat(canvas.getAttribute('height')) : 320);
 
-    const min = Math.min(...data.concat(levels ? [levels.sl, levels.tp1, levels.tp2, levels.entry] : []));
-    const max = Math.max(...data.concat(levels ? [levels.sl, levels.tp1, levels.tp2, levels.entry] : []));
-    const pad = (max - min) * 0.06 || 1; // 6% padding
-    const yMin = min - pad;
-    const yMax = max + pad;
-
-    if (priceChart) { priceChart.destroy(); priceChart = null; }
-
-    const ds = [{
-      label:'السعر',
-      data,
-      borderWidth: 1.7,
-      pointRadius: 0,
-      borderColor: '#e5e7eb',
-      tension: 0.2
-    }];
-
-    if (levels){
-      const horiz = (y)=> labels.map(()=>y);
-      ds.push(
-        { label:'Entry', data: horiz(levels.entry), borderColor:'#60a5fa', borderDash:[6,6], borderWidth:1.6, pointRadius:0 },
-        { label:'SL',    data: horiz(levels.sl),    borderColor:'#ef4444', borderDash:[6,6], borderWidth:1.6, pointRadius:0 },
-        { label:'TP1',   data: horiz(levels.tp1),   borderColor:'#22c55e', borderDash:[4,4], borderWidth:1.6, pointRadius:0 },
-        { label:'TP2',   data: horiz(levels.tp2),   borderColor:'#22c55e', borderDash:[4,4], borderWidth:1.6, pointRadius:0, borderDashOffset:4 }
-      );
-    }
-
-    priceChart = new Chart(canvas, {
-      type: 'line',
-      data: { labels, datasets: ds },
-      options: {
-        animation: false,
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display:false }
-        },
-        scales: {
-          x: {
-            type: 'time',
-            time: { unit: currentTF===1440 ? 'day' : (currentTF===60 ? 'hour' : 'minute') },
-            ticks: { color:'#9ca3af', maxTicksLimit: 6 },
-            grid:  { color:'#273449' }
-          },
-          y: {
-            min: yMin,
-            max: yMax,
-            ticks: { color:'#9ca3af' },
-            grid:  { color:'#273449' }
-          }
-        }
-      }
-    });
-    window.requestAnimationFrame(()=> priceChart?.resize());
-  }catch(e){
-    console.warn('chart draw error', e);
+  const wantW = Math.round(cssW * dpr);
+  const wantH = Math.round(cssH * dpr);
+  if (canvas.width !== wantW || canvas.height !== wantH) {
+    canvas.width  = wantW;   // reset context state
+    canvas.height = wantH;
   }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(1,0,0,1,0,0);           // reset
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.scale(dpr, dpr);
+
+  // نافذة العرض
+  const N = Math.min(CHART_POINTS, series.length);
+  const data = series.slice(-N);
+
+  // هوامش
+  const padL=50, padR=16, padT=12, padB=18;
+  const W = cssW - padL - padR;
+  const H = cssH - padT - padB;
+
+  // نطاق السعر
+  let minY = Math.min(...data.map(p=>Number.isFinite(p.low)?p.low:p.close));
+  let maxY = Math.max(...data.map(p=>Number.isFinite(p.high)?p.high:p.close));
+  if (!(isFinite(minY)&&isFinite(maxY))) return;
+  const padY = (maxY-minY)*0.08 || 1;
+  minY -= padY; maxY += padY;
+
+  const xAt = (i) => padL + (i/(N-1))*W;
+  const yAt = (v) => padT + (1-(v-minY)/(maxY-minY))*H;
+
+  // خلفية + Grid
+  ctx.fillStyle = '#111827'; ctx.fillRect(0,0,cssW,cssH);
+  ctx.strokeStyle = '#273449'; ctx.lineWidth=1;
+  ctx.beginPath();
+  for (let g=0; g<=5; g++){
+    const y = padT + (g/5)*H;
+    ctx.moveTo(padL, y); ctx.lineTo(padL+W, y);
+  }
+  ctx.stroke();
+
+  // محور Y
+  ctx.fillStyle='#9ca3af'; ctx.font='12px system-ui';
+  for (let g=0; g<=5; g++){
+    const yv = minY + (1-g/5)*(maxY-minY);
+    const y  = padT + (g/5)*H;
+    ctx.fillText(nf2.format(yv), 6, y+4);
+  }
+
+  // شموع إذا OHLC موجود وإلا خط
+  const hasOHLC = data.some(p=>p.high!==p.close || p.low!==p.close || p.open!==p.close);
+  if (hasOHLC){
+    for (let i=0;i<data.length;i++){
+      const p=data[i];
+      const x=xAt(i), w=Math.max(1, W/N*0.6);
+      const yH=yAt(p.high), yL=yAt(p.low), yO=yAt(p.open), yC=yAt(p.close);
+      ctx.strokeStyle='#e5e7eb'; ctx.beginPath(); ctx.moveTo(x,yH); ctx.lineTo(x,yL); ctx.stroke();
+      const up = p.close>=p.open;
+      ctx.fillStyle= up ? '#10b981' : '#ef4444';
+      const bx = x - w/2, by = Math.min(yO,yC), bh = Math.max(2, Math.abs(yC-yO));
+      ctx.fillRect(bx, by, w, bh);
+    }
+  } else {
+    ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=1.6; ctx.beginPath();
+    for (let i=0;i<data.length;i++){
+      const x=xAt(i), y=yAt(data[i].close);
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+
+  // نقطة آخر سعر
+  const lastX = xAt(N-1), lastY = yAt(data[N-1].close);
+  ctx.fillStyle = '#f59e0b';
+  ctx.beginPath(); ctx.arc(lastX, lastY, 4, 0, Math.PI*2); ctx.fill();
+
+  // عنوان صغير
+  ctx.fillStyle='#9ca3af'; ctx.font='12px system-ui';
+  ctx.fillText(`نطاق عرض: آخر ${N} شمعة`, padL, padT-2+12);
 }
