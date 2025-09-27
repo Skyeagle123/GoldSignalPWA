@@ -1,9 +1,20 @@
-/************ GoldSignals - app.js (stable + local date/time in table) ************/
+/************ GoldSignals - app.js (stable + local datetime in table) ************/
+/* يعمل مع IDs التالية في الـHTML:
+   csvInput, tf5, tf60, tfD, runBtn,
+   livePrice, liveTime, summaryText,
+   indRSI, indMACD, indEMAF, indEMAS,
+   pivotP, r1, r2, r3, s1, s2, s3,
+   rowsBody, gsChart, adviceIn, adviceOut
+*/
+
+/*--------- إعدادات عامة ---------*/
 const LIVE_JSON_URL    = 'https://goldprice-proxy.samer-mourtada.workers.dev/price';
-const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';
+const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';   // إذا تركت الحقل فاضي
 const TABLE_ROWS       = 80;
 const LIVE_REFRESH_SEC = 30;
+const CHART_POINTS     = 150; // عدد الشموع المرسومة
 
+/*--------- التقاط عناصر الواجهة ---------*/
 const $ = (id) => document.getElementById(id);
 const elCsvInput   = $('csvInput');
 const elTf5        = $('tf5');
@@ -26,6 +37,10 @@ const elS1 = $('s1'), elS2 = $('s2'), elS3 = $('s3');
 
 const elRowsBody = $('rowsBody');
 
+const elAdviceIn  = $('adviceIn');
+const elAdviceOut = $('adviceOut');
+
+/* إعدادات المؤشرات (قابلة للتغيير من HTML إذا بدك) */
 const elEmaFast   = $('emaFast');
 const elEmaSlow   = $('emaSlow');
 const elRsiPeriod = $('rsiPeriod');
@@ -38,26 +53,18 @@ elEmaFast?.addEventListener('input', ()=> EMA_FAST = parseInt(elEmaFast.value||'
 elEmaSlow?.addEventListener('input', ()=> EMA_SLOW = parseInt(elEmaSlow.value||'26',10));
 elRsiPeriod?.addEventListener('input',()=> RSI_PER  = parseInt(elRsiPeriod.value||'14',10));
 
-/* تنسيقات أرقام */
+/*--------- تنسيقات أرقام EN ---------*/
 const nf2 = new Intl.NumberFormat('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 const nf4 = new Intl.NumberFormat('en-US', {minimumFractionDigits:4, maximumFractionDigits:4});
+const fmtTime = (iso) => { try { return new Date(iso).toISOString().replace('T',' ').replace('Z',''); } catch { return String(iso); } };
 
-/* دوال وقت محلي */
-const pad2 = (n)=>String(n).padStart(2,'0');
-function fmtLocalDate(ts){
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
-}
-function fmtLocalTime(ts){
-  const d = new Date(ts);
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
-function fmtLocalDateTime(ts){
-  const d = new Date(ts);
-  return `${fmtLocalDate(ts)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-}
+/* مُنسِّقات التاريخ/الوقت المحلي للجدول */
+const fmtLocalDate = (ts) =>
+  new Date(ts).toLocaleDateString(undefined, {year:'numeric', month:'2-digit', day:'2-digit'});
+const fmtLocalTime = (ts) =>
+  new Date(ts).toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit', hour12:false});
 
-/* حالة الإطار الزمني */
+/*--------- حالة الإطار الزمني ---------*/
 let currentTF = 5;
 function setActiveTF(tf){
   currentTF = tf;
@@ -67,7 +74,7 @@ function setActiveTF(tf){
   if (tf===1440) elTfD?.classList?.add('active');
 }
 
-/* CSV helpers */
+/*--------- CSV helpers ---------*/
 function parseCsv(text){
   const lines = text.trim().split(/\r?\n/);
   if (!lines.length) return [];
@@ -75,7 +82,7 @@ function parseCsv(text){
   const out = [];
 
   if (header.includes('symbol') && header.includes('date') && header.includes('time')) {
-    // Stooq: Symbol,Date,Time,Open,High,Low,Close,Volume
+    // صيغة Stooq: Symbol,Date,Time,Open,High,Low,Close,Volume
     for (let i=1;i<lines.length;i++){
       const [sym,d,t,o,h,l,c] = lines[i].split(',');
       if (!d || !t) continue;
@@ -92,7 +99,7 @@ function parseCsv(text){
       }
     }
   } else {
-    // بسيط: Date,Close
+    // صيغة بسيطة: Date,Close
     for (let i=1;i<lines.length;i++){
       const [d,c] = lines[i].split(',');
       const ts = Date.parse(d);
@@ -134,15 +141,15 @@ function aggregateOHLC(rows, minutes){
   return [...map.values()].sort((a,b)=>a.ts-b.ts);
 }
 
-/* مؤشرات */
+/*--------- مؤشرات ---------*/
 function ema(series, period){
   const out = new Array(series.length).fill(null);
   const k = 2/(period+1);
-  let e=null, sum=0;
+  let emaVal=null, sum=0;
   for (let i=0;i<series.length;i++){
     const p = series[i].close;
-    if (i<period){ sum+=p; if(i===period-1){ e=sum/period; out[i]=e; } }
-    else { e = p*k + e*(1-k); out[i]=e; }
+    if (i<period){ sum+=p; if(i===period-1){ emaVal=sum/period; out[i]=emaVal; } }
+    else { emaVal = p*k + emaVal*(1-k); out[i]=emaVal; }
   }
   return out;
 }
@@ -188,7 +195,24 @@ function classify(rsiVal, macdVal){
   return 'حيادي';
 }
 
-/* Pivot */
+/* ATR (للأهداف/الوقف) */
+function atr(series, period=14){
+  if (!series.length) return 0;
+  let trs = [];
+  for (let i=1;i<series.length;i++){
+    const h = series[i].high ?? series[i].close;
+    const l = series[i].low  ?? series[i].close;
+    const pc= series[i-1].close;
+    const tr = Math.max(h-l, Math.abs(h-pc), Math.abs(l-pc));
+    trs.push(tr);
+  }
+  if (!trs.length) return (series.at(-1).close||0)*0.005; // fallback 0.5%
+  const n = Math.min(period, trs.length);
+  const last = trs.slice(-n);
+  return last.reduce((a,b)=>a+b,0)/n;
+}
+
+/*--------- Pivot ---------*/
 function calcPivots(daily){
   if (!daily || daily.length<2) return null;
   const y = daily[daily.length-2];
@@ -198,15 +222,30 @@ function calcPivots(daily){
   return {P,R1,R2,R3,S1,S2,S3};
 }
 
-/* واجهة */
-function paintLive(price, tsOrIso){
-  if (elLivePrice && Number.isFinite(price)) elLivePrice.textContent = nf2.format(price);
-  if (elLiveTime){
-    let ts = null;
-    if (typeof tsOrIso === 'number') ts = tsOrIso;
-    else if (tsOrIso) ts = Date.parse(tsOrIso);
-    if (Number.isFinite(ts)) elLiveTime.textContent = fmtLocalDateTime(ts);
+/* نصيحة دخول/خروج بسيطة */
+function makeAdvice(dir, priceNow, emaFnow, piv, series){
+  const rng = atr(series, 14);
+  const step = Math.max(0.5, rng);
+  if (dir==='شراء'){
+    const entry = Math.max(emaFnow, piv?.P ?? emaFnow);
+    const sl    = entry - step*0.7;
+    const tp1   = entry + step*1.2;
+    const tp2   = entry + step*2.4;
+    return {dir, entry, sl, tp1, tp2};
+  } else if (dir==='بيع'){
+    const entry = Math.min(emaFnow, piv?.P ?? emaFnow);
+    const sl    = entry + step*0.7;
+    const tp1   = entry - step*1.2;
+    const tp2   = entry - step*2.4;
+    return {dir, entry, sl, tp1, tp2};
   }
+  return {dir:'حيادي'};
+}
+
+/*--------- رسم الواجهة ---------*/
+function paintLive(price, iso){
+  if (elLivePrice && Number.isFinite(price)) elLivePrice.textContent = nf2.format(price);
+  if (elLiveTime  && iso)                    elLiveTime.textContent  = fmtTime(iso);
 }
 function paintIndicators(rsiVal, macdVal, emaFv, emaSv){
   if (elIndRSI)  elIndRSI.textContent  = Number.isFinite(rsiVal)  ? nf2.format(rsiVal)  : '—';
@@ -231,7 +270,7 @@ function paintPivots(p){
   elS3&&(elS3.textContent=nf2.format(p.S3));
 }
 
-/* جدول البيانات الأخيرة (مع التاريخ/الوقت المحلي) */
+/* ✅ تعديل وحيد هنا: إضافة التاريخ/الوقت المحليين للجدول */
 function paintTable(rows){
   if (!elRowsBody) return;
   elRowsBody.innerHTML='';
@@ -239,34 +278,42 @@ function paintTable(rows){
   for (const r of last){
     const s = classify(r.rsi, r.macd);
     const color = s==='شراء'?'#10b981':s==='بيع'?'#ef4444':'#f59e0b';
+    const dStr = r.ts ? fmtLocalDate(r.ts) : '—';
+    const tStr = r.ts ? fmtLocalTime(r.ts) : '—';
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${fmtLocalDate(r.ts)}</td>
-      <td>${fmtLocalTime(r.ts)}</td>
+      <td>${dStr}</td>
+      <td>${tStr}</td>
       <td>${nf2.format(r.price)}</td>
       <td style="color:${color};font-weight:600">${s}</td>
       <td>${Number.isFinite(r.rsi)?nf2.format(r.rsi):'—'}</td>
+      <td>${Number.isFinite(r.macd)?nf4.format(r.macd):'—'}</td>
+      <td>${nf2.format(r.emaF)}</td>
     `;
     elRowsBody.appendChild(tr);
   }
 }
 
-/* تشغيل التحليل */
+/*--------- التحليل ---------*/
 async function runAnalysis(){
   try{
     const csvUrl = elCsvInput?.value?.trim() || '';
-    let rows5 = await fetchCsv(csvUrl);
+    let rows5 = await fetchCsv(csvUrl);           // 5m OHLC(أو Close-only)
     if (!rows5.length) throw new Error('ملف CSV فارغ');
 
+    // يومي من 5 دقائق
     const daily = aggregateOHLC(rows5, 1440);
 
+    // اختيار الإطار الزمني
     let series = rows5;
     if (currentTF===60)   series = aggregateOHLC(rows5, 60);
     if (currentTF===1440) series = daily;
 
+    // مؤشرات
     const rsiArr  = rsi(series, RSI_PER);
     const macdObj = macd(series, EMA_FAST, EMA_SLOW, 9);
 
+    // آخر نقطة
     const i = series.length-1;
     const priceNow = series[i].close;
     const rsiNow   = rsiArr[i];
@@ -280,17 +327,40 @@ async function runAnalysis(){
     const piv = calcPivots(daily);
     paintPivots(piv);
 
+    // جدول
     const tableRows = series.map((p,idx)=>({
       ts:p.ts, price:p.close, rsi:rsiArr[idx], macd:macdObj.macd[idx], emaF:macdObj.emaF[idx]
     }));
     paintTable(tableRows);
+
+    // نصيحة + (شارتك الحالي يبقى كما هو إن كان موجوداً لديك)
+    const dir = classify(rsiNow, macdNow);
+    const advice = makeAdvice(dir, priceNow, emaFnow, piv, series);
+    if (elAdviceIn && elAdviceOut){
+      if (advice.dir==='شراء'){
+        elAdviceIn.textContent  = `نصيحة الدخول: شراء عند اختراق/ارتداد قرب EMA ${nf2.format(advice.entry)}.`;
+        elAdviceOut.textContent = `نصيحة الخروج: وقف ${nf2.format(advice.sl)} • أهداف: ${nf2.format(advice.tp1)} ثم ${nf2.format(advice.tp2)}.`;
+      } else if (advice.dir==='بيع'){
+        elAdviceIn.textContent  = `نصيحة الدخول: بيع عند كسر/ارتداد قرب EMA ${nf2.format(advice.entry)}.`;
+        elAdviceOut.textContent = `نصيحة الخروج: وقف ${nf2.format(advice.sl)} • أهداف: ${nf2.format(advice.tp1)} ثم ${nf2.format(advice.tp2)}.`;
+      } else {
+        elAdviceIn.textContent  = 'نصيحة الدخول: حيادي.';
+        elAdviceOut.textContent = 'نصيحة الخروج: —';
+      }
+    }
+
+    // ملاحظة: إذا كان عندك drawChart سابق، اتركه كما هو؛ الجدول فقط هو الذي تغيّر.
+    if (typeof drawChart === 'function') {
+      drawChart(series, advice);
+    }
+
   }catch(err){
     alert(`تعذّر تحميل/تحليل البيانات: ${err.message||err}`);
     console.error(err);
   }
 }
 
-/* السعر الحي */
+/*--------- السعر الحي ---------*/
 async function refreshLive(){
   try{
     const r = await fetch(LIVE_JSON_URL, {cache:'no-store'});
@@ -298,17 +368,18 @@ async function refreshLive(){
     const j = await r.json();
     if (j && j.ok && Number.isFinite(j.price)){
       const iso = j.isoTime || (j.date && j.time ? `${j.date}T${j.time}Z` : null);
-      if (iso) paintLive(j.price, iso); else paintLive(j.price, Date.now());
+      paintLive(j.price, iso);
     }
   }catch(e){ console.warn('Live error:', e); }
 }
 
-/* أحداث */
+/*--------- أحداث ---------*/
 elBtnRun?.addEventListener('click', runAnalysis);
 elTf5?.addEventListener('click',  ()=>{ setActiveTF(5);    runAnalysis(); });
 elTf60?.addEventListener('click', ()=>{ setActiveTF(60);   runAnalysis(); });
 elTfD?.addEventListener('click',  ()=>{ setActiveTF(1440); runAnalysis(); });
 
+// حفظ رابط CSV محلياً
 const LS_KEY='gs_csv_url';
 if (elCsvInput){
   const saved = localStorage.getItem(LS_KEY)||'';
@@ -319,7 +390,7 @@ if (elCsvInput){
   });
 }
 
-/* تشغيل أولي */
+/*--------- تشغيل ---------*/
 setActiveTF(5);
 runAnalysis();
 refreshLive();
