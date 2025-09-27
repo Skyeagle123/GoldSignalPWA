@@ -1,20 +1,9 @@
-/************ GoldSignals - app.js (stable + chart sizing fix + entry/SL/TP overlay) ************/
-/* يعمل مع IDs التالية في الـHTML:
-   csvInput, tf5, tf60, tfD, runBtn,
-   livePrice, liveTime, summaryText,
-   indRSI, indMACD, indEMAF, indEMAS,
-   pivotP, r1, r2, r3, s1, s2, s3,
-   rowsBody, gsChart, adviceIn, adviceOut
-*/
-
-/*--------- إعدادات عامة ---------*/
+/************ GoldSignals - app.js (stable + local date/time in table) ************/
 const LIVE_JSON_URL    = 'https://goldprice-proxy.samer-mourtada.workers.dev/price';
-const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';   // إذا تركت الحقل فاضي
+const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';
 const TABLE_ROWS       = 80;
 const LIVE_REFRESH_SEC = 30;
-const CHART_POINTS     = 150; // عدد الشموع المرسومة
 
-/*--------- التقاط عناصر الواجهة ---------*/
 const $ = (id) => document.getElementById(id);
 const elCsvInput   = $('csvInput');
 const elTf5        = $('tf5');
@@ -37,10 +26,6 @@ const elS1 = $('s1'), elS2 = $('s2'), elS3 = $('s3');
 
 const elRowsBody = $('rowsBody');
 
-const elAdviceIn  = $('adviceIn');
-const elAdviceOut = $('adviceOut');
-
-/* إعدادات المؤشرات (قابلة للتغيير من HTML إذا بدك) */
 const elEmaFast   = $('emaFast');
 const elEmaSlow   = $('emaSlow');
 const elRsiPeriod = $('rsiPeriod');
@@ -53,12 +38,26 @@ elEmaFast?.addEventListener('input', ()=> EMA_FAST = parseInt(elEmaFast.value||'
 elEmaSlow?.addEventListener('input', ()=> EMA_SLOW = parseInt(elEmaSlow.value||'26',10));
 elRsiPeriod?.addEventListener('input',()=> RSI_PER  = parseInt(elRsiPeriod.value||'14',10));
 
-/*--------- تنسيقات أرقام EN ---------*/
+/* تنسيقات أرقام */
 const nf2 = new Intl.NumberFormat('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 const nf4 = new Intl.NumberFormat('en-US', {minimumFractionDigits:4, maximumFractionDigits:4});
-const fmtTime = (iso) => { try { return new Date(iso).toISOString().replace('T',' ').replace('Z',''); } catch { return String(iso); } };
 
-/*--------- حالة الإطار الزمني ---------*/
+/* دوال وقت محلي */
+const pad2 = (n)=>String(n).padStart(2,'0');
+function fmtLocalDate(ts){
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+}
+function fmtLocalTime(ts){
+  const d = new Date(ts);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+function fmtLocalDateTime(ts){
+  const d = new Date(ts);
+  return `${fmtLocalDate(ts)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+/* حالة الإطار الزمني */
 let currentTF = 5;
 function setActiveTF(tf){
   currentTF = tf;
@@ -68,7 +67,7 @@ function setActiveTF(tf){
   if (tf===1440) elTfD?.classList?.add('active');
 }
 
-/*--------- CSV helpers ---------*/
+/* CSV helpers */
 function parseCsv(text){
   const lines = text.trim().split(/\r?\n/);
   if (!lines.length) return [];
@@ -76,7 +75,7 @@ function parseCsv(text){
   const out = [];
 
   if (header.includes('symbol') && header.includes('date') && header.includes('time')) {
-    // صيغة Stooq: Symbol,Date,Time,Open,High,Low,Close,Volume
+    // Stooq: Symbol,Date,Time,Open,High,Low,Close,Volume
     for (let i=1;i<lines.length;i++){
       const [sym,d,t,o,h,l,c] = lines[i].split(',');
       if (!d || !t) continue;
@@ -93,7 +92,7 @@ function parseCsv(text){
       }
     }
   } else {
-    // صيغة بسيطة: Date,Close
+    // بسيط: Date,Close
     for (let i=1;i<lines.length;i++){
       const [d,c] = lines[i].split(',');
       const ts = Date.parse(d);
@@ -135,15 +134,15 @@ function aggregateOHLC(rows, minutes){
   return [...map.values()].sort((a,b)=>a.ts-b.ts);
 }
 
-/*--------- مؤشرات ---------*/
+/* مؤشرات */
 function ema(series, period){
   const out = new Array(series.length).fill(null);
   const k = 2/(period+1);
-  let emaVal=null, sum=0;
+  let e=null, sum=0;
   for (let i=0;i<series.length;i++){
     const p = series[i].close;
-    if (i<period){ sum+=p; if(i===period-1){ emaVal=sum/period; out[i]=emaVal; } }
-    else { emaVal = p*k + emaVal*(1-k); out[i]=emaVal; }
+    if (i<period){ sum+=p; if(i===period-1){ e=sum/period; out[i]=e; } }
+    else { e = p*k + e*(1-k); out[i]=e; }
   }
   return out;
 }
@@ -189,24 +188,7 @@ function classify(rsiVal, macdVal){
   return 'حيادي';
 }
 
-/* ATR (للأهداف/الوقف) */
-function atr(series, period=14){
-  if (!series.length) return 0;
-  let trs = [];
-  for (let i=1;i<series.length;i++){
-    const h = series[i].high ?? series[i].close;
-    const l = series[i].low  ?? series[i].close;
-    const pc= series[i-1].close;
-    const tr = Math.max(h-l, Math.abs(h-pc), Math.abs(l-pc));
-    trs.push(tr);
-  }
-  if (!trs.length) return (series.at(-1).close||0)*0.005; // fallback 0.5%
-  const n = Math.min(period, trs.length);
-  const last = trs.slice(-n);
-  return last.reduce((a,b)=>a+b,0)/n;
-}
-
-/*--------- Pivot ---------*/
+/* Pivot */
 function calcPivots(daily){
   if (!daily || daily.length<2) return null;
   const y = daily[daily.length-2];
@@ -216,31 +198,15 @@ function calcPivots(daily){
   return {P,R1,R2,R3,S1,S2,S3};
 }
 
-/* نصيحة دخول/خروج بسيطة مبنية على الاتجاه + ATR + Pivot */
-function makeAdvice(dir, priceNow, emaFnow, piv, series){
-  const rng = atr(series, 14);
-  const step = Math.max(0.5, rng); // مسافة منطقية
-
-  if (dir==='شراء'){
-    const entry = Math.max(emaFnow, piv?.P ?? emaFnow);
-    const sl    = entry - step*0.7;
-    const tp1   = entry + step*1.2;
-    const tp2   = entry + step*2.4;
-    return {dir, entry, sl, tp1, tp2};
-  } else if (dir==='بيع'){
-    const entry = Math.min(emaFnow, piv?.P ?? emaFnow);
-    const sl    = entry + step*0.7;
-    const tp1   = entry - step*1.2;
-    const tp2   = entry - step*2.4;
-    return {dir, entry, sl, tp1, tp2};
-  }
-  return {dir:'حيادي'};
-}
-
-/*--------- رسم الواجهة ---------*/
-function paintLive(price, iso){
+/* واجهة */
+function paintLive(price, tsOrIso){
   if (elLivePrice && Number.isFinite(price)) elLivePrice.textContent = nf2.format(price);
-  if (elLiveTime  && iso)                    elLiveTime.textContent  = fmtTime(iso);
+  if (elLiveTime){
+    let ts = null;
+    if (typeof tsOrIso === 'number') ts = tsOrIso;
+    else if (tsOrIso) ts = Date.parse(tsOrIso);
+    if (Number.isFinite(ts)) elLiveTime.textContent = fmtLocalDateTime(ts);
+  }
 }
 function paintIndicators(rsiVal, macdVal, emaFv, emaSv){
   if (elIndRSI)  elIndRSI.textContent  = Number.isFinite(rsiVal)  ? nf2.format(rsiVal)  : '—';
@@ -264,6 +230,8 @@ function paintPivots(p){
   elS2&&(elS2.textContent=nf2.format(p.S2));
   elS3&&(elS3.textContent=nf2.format(p.S3));
 }
+
+/* جدول البيانات الأخيرة (مع التاريخ/الوقت المحلي) */
 function paintTable(rows){
   if (!elRowsBody) return;
   elRowsBody.innerHTML='';
@@ -273,36 +241,32 @@ function paintTable(rows){
     const color = s==='شراء'?'#10b981':s==='بيع'?'#ef4444':'#f59e0b';
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${nf2.format(r.emaF)}</td>
-      <td>${Number.isFinite(r.macd)?nf4.format(r.macd):'—'}</td>
-      <td>${Number.isFinite(r.rsi)?nf2.format(r.rsi):'—'}</td>
-      <td style="color:${color};font-weight:600">${s}</td>
+      <td>${fmtLocalDate(r.ts)}</td>
+      <td>${fmtLocalTime(r.ts)}</td>
       <td>${nf2.format(r.price)}</td>
+      <td style="color:${color};font-weight:600">${s}</td>
+      <td>${Number.isFinite(r.rsi)?nf2.format(r.rsi):'—'}</td>
     `;
     elRowsBody.appendChild(tr);
   }
 }
 
-/*--------- التحليل ---------*/
+/* تشغيل التحليل */
 async function runAnalysis(){
   try{
     const csvUrl = elCsvInput?.value?.trim() || '';
-    let rows5 = await fetchCsv(csvUrl);           // 5m OHLC(أو Close-only)
+    let rows5 = await fetchCsv(csvUrl);
     if (!rows5.length) throw new Error('ملف CSV فارغ');
 
-    // يومي من 5 دقائق
     const daily = aggregateOHLC(rows5, 1440);
 
-    // اختيار الإطار الزمني
     let series = rows5;
     if (currentTF===60)   series = aggregateOHLC(rows5, 60);
     if (currentTF===1440) series = daily;
 
-    // مؤشرات
     const rsiArr  = rsi(series, RSI_PER);
     const macdObj = macd(series, EMA_FAST, EMA_SLOW, 9);
 
-    // آخر نقطة
     const i = series.length-1;
     const priceNow = series[i].close;
     const rsiNow   = rsiArr[i];
@@ -316,38 +280,17 @@ async function runAnalysis(){
     const piv = calcPivots(daily);
     paintPivots(piv);
 
-    // جدول
     const tableRows = series.map((p,idx)=>({
       ts:p.ts, price:p.close, rsi:rsiArr[idx], macd:macdObj.macd[idx], emaF:macdObj.emaF[idx]
     }));
     paintTable(tableRows);
-
-    // نصيحة + شارت
-    const dir = classify(rsiNow, macdNow);               // نفس منطق الملخص
-    const advice = makeAdvice(dir, priceNow, emaFnow, piv, series);
-
-    if (elAdviceIn && elAdviceOut){
-      if (advice.dir==='شراء'){
-        elAdviceIn.textContent  = `نصيحة الدخول: شراء عند اختراق/ارتداد قرب EMA ${nf2.format(advice.entry)}.`;
-        elAdviceOut.textContent = `نصيحة الخروج: وقف ${nf2.format(advice.sl)} • أهداف: ${nf2.format(advice.tp1)} ثم ${nf2.format(advice.tp2)}.`;
-      } else if (advice.dir==='بيع'){
-        elAdviceIn.textContent  = `نصيحة الدخول: بيع عند كسر/ارتداد قرب EMA ${nf2.format(advice.entry)}.`;
-        elAdviceOut.textContent = `نصيحة الخروج: وقف ${nf2.format(advice.sl)} • أهداف: ${nf2.format(advice.tp1)} ثم ${nf2.format(advice.tp2)}.`;
-      } else {
-        elAdviceIn.textContent  = 'نصيحة الدخول: حيادي.';
-        elAdviceOut.textContent = 'نصيحة الخروج: —';
-      }
-    }
-
-    drawChart(series, advice);
-
   }catch(err){
     alert(`تعذّر تحميل/تحليل البيانات: ${err.message||err}`);
     console.error(err);
   }
 }
 
-/*--------- السعر الحي ---------*/
+/* السعر الحي */
 async function refreshLive(){
   try{
     const r = await fetch(LIVE_JSON_URL, {cache:'no-store'});
@@ -355,18 +298,17 @@ async function refreshLive(){
     const j = await r.json();
     if (j && j.ok && Number.isFinite(j.price)){
       const iso = j.isoTime || (j.date && j.time ? `${j.date}T${j.time}Z` : null);
-      paintLive(j.price, iso);
+      if (iso) paintLive(j.price, iso); else paintLive(j.price, Date.now());
     }
   }catch(e){ console.warn('Live error:', e); }
 }
 
-/*--------- أحداث ---------*/
+/* أحداث */
 elBtnRun?.addEventListener('click', runAnalysis);
 elTf5?.addEventListener('click',  ()=>{ setActiveTF(5);    runAnalysis(); });
 elTf60?.addEventListener('click', ()=>{ setActiveTF(60);   runAnalysis(); });
 elTfD?.addEventListener('click',  ()=>{ setActiveTF(1440); runAnalysis(); });
 
-// حفظ رابط CSV محلياً
 const LS_KEY='gs_csv_url';
 if (elCsvInput){
   const saved = localStorage.getItem(LS_KEY)||'';
@@ -377,143 +319,8 @@ if (elCsvInput){
   });
 }
 
-/*--------- تشغيل ---------*/
+/* تشغيل أولي */
 setActiveTF(5);
 runAnalysis();
 refreshLive();
 setInterval(refreshLive, LIVE_REFRESH_SEC*1000);
-
-/* ===================================================== */
-/*        تصليح قياس الشارت + رسم خطوط Entry/SL/TP       */
-/* ===================================================== */
-
-function getCanvasCssHeight(canvas, fallback=320){
-  let cssH = canvas.getBoundingClientRect?.().height;
-  if (!cssH || cssH < 120) {
-    const st = typeof getComputedStyle === 'function' ? getComputedStyle(canvas) : null;
-    const h  = st ? parseFloat(st.height) : NaN;
-    cssH = Number.isFinite(h) && h > 0 ? h : fallback;
-  }
-  return cssH;
-}
-
-function drawChart(series, advice){
-  const canvas = document.getElementById('gsChart');
-  if (!canvas || !Array.isArray(series) || !series.length) return;
-
-  // ثبّت الحجم عند كل تبديل TF (يحل مشكلة التشوّه)
-  const dpr  = Math.max(1, window.devicePixelRatio || 1);
-  const cssW = canvas.clientWidth || canvas.parentElement?.clientWidth || 800;
-  const cssH = getCanvasCssHeight(canvas, canvas.getAttribute('height') ? parseFloat(canvas.getAttribute('height')) : 320);
-  const wantW = Math.round(cssW * dpr);
-  const wantH = Math.round(cssH * dpr);
-  if (canvas.width !== wantW || canvas.height !== wantH) {
-    canvas.width  = wantW;
-    canvas.height = wantH;
-  }
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(1,0,0,1,0,0);
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.scale(dpr, dpr);
-
-  const N = Math.min(CHART_POINTS, series.length);
-  const data = series.slice(-N);
-
-  // هوامش
-  const padL=54, padR=16, padT=14, padB=22;
-  const W = cssW - padL - padR;
-  const H = cssH - padT - padB;
-
-  // نطاق السعر
-  let minY = Math.min(...data.map(p=>Number.isFinite(p.low)?p.low:p.close));
-  let maxY = Math.max(...data.map(p=>Number.isFinite(p.high)?p.high:p.close));
-  if (!(isFinite(minY)&&isFinite(maxY))) return;
-  const padY = (maxY-minY)*0.08 || 1;
-  minY -= padY; maxY += padY;
-
-  const xAt = (i) => padL + (i/(N-1))*W;
-  const yAt = (v) => padT + (1-(v-minY)/(maxY-minY))*H;
-
-  // خلفية + Grid
-  ctx.fillStyle = '#111827'; ctx.fillRect(0,0,cssW,cssH);
-  ctx.strokeStyle = '#273449'; ctx.lineWidth=1;
-  ctx.beginPath();
-  for (let g=0; g<=5; g++){
-    const y = padT + (g/5)*H;
-    ctx.moveTo(padL, y); ctx.lineTo(padL+W, y);
-  }
-  ctx.stroke();
-
-  // محور Y
-  ctx.fillStyle='#9ca3af'; ctx.font='12px system-ui';
-  for (let g=0; g<=5; g++){
-    const yv = minY + (1-g/5)*(maxY-minY);
-    const y  = padT + (g/5)*H;
-    ctx.fillText(nf2.format(yv), 6, y+4);
-  }
-
-  // شموع إذا OHLC موجود وإلا خط
-  const hasOHLC = data.some(p=>p.high!==p.close || p.low!==p.close || p.open!==p.close);
-  if (hasOHLC){
-    for (let i=0;i<data.length;i++){
-      const p=data[i];
-      const x=xAt(i), w=Math.max(1, W/N*0.6);
-      const yH=yAt(p.high), yL=yAt(p.low), yO=yAt(p.open), yC=yAt(p.close);
-      ctx.strokeStyle='#e5e7eb'; ctx.beginPath(); ctx.moveTo(x,yH); ctx.lineTo(x,yL); ctx.stroke();
-      const up = p.close>=p.open;
-      ctx.fillStyle= up ? '#10b981' : '#ef4444';
-      const bx = x - w/2, by = Math.min(yO,yC), bh = Math.max(2, Math.abs(yC-yO));
-      ctx.fillRect(bx, by, w, bh);
-    }
-  } else {
-    ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=1.6; ctx.beginPath();
-    for (let i=0;i<data.length;i++){
-      const x=xAt(i), y=yAt(data[i].close);
-      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    }
-    ctx.stroke();
-  }
-
-  // آخر نقطة
-  const lastX = xAt(N-1), lastY = yAt(data[N-1].close);
-  ctx.fillStyle = '#f59e0b';
-  ctx.beginPath(); ctx.arc(lastX, lastY, 4, 0, Math.PI*2); ctx.fill();
-
-  // خطوط Entry/SL/TP (إن توفرت نصيحة)
-  if (advice && advice.dir && advice.dir!=='حيادي'){
-    // Entry (أزرق)
-    ctx.setLineDash([6,6]); ctx.lineWidth=1.4; ctx.strokeStyle='#60a5fa';
-    const yEntry = yAt(advice.entry);
-    ctx.beginPath(); ctx.moveTo(padL, yEntry); ctx.lineTo(padL+W, yEntry); ctx.stroke();
-    ctx.fillStyle='#60a5fa'; ctx.font='12px system-ui';
-    ctx.fillText(`Entry/Break: ${nf2.format(advice.entry)}`, padL+6, yEntry-6);
-
-    // SL (أحمر)
-    ctx.strokeStyle='#ef4444';
-    const ySL = yAt(advice.sl);
-    ctx.beginPath(); ctx.moveTo(padL, ySL); ctx.lineTo(padL+W, ySL); ctx.stroke();
-    ctx.fillStyle='#ef4444';
-    ctx.fillText(`SL: ${nf2.format(advice.sl)}`, padL+6, ySL-6);
-
-    // TP1 / TP2 (أخضر)
-    ctx.strokeStyle='#10b981';
-    const yTP1 = yAt(advice.tp1);
-    ctx.beginPath(); ctx.moveTo(padL, yTP1); ctx.lineTo(padL+W, yTP1); ctx.stroke();
-    ctx.fillStyle='#10b981';
-    ctx.fillText(`TP1: ${nf2.format(advice.tp1)}`, padL+6, yTP1-6);
-
-    if (Number.isFinite(advice.tp2)){
-      const yTP2 = yAt(advice.tp2);
-      ctx.beginPath(); ctx.moveTo(padL, yTP2); ctx.lineTo(padL+W, yTP2); ctx.stroke();
-      ctx.fillText(`TP2: ${nf2.format(advice.tp2)}`, padL+6, yTP2-6);
-    }
-
-    // نقطة توضيحية عند الحافة
-    ctx.setLineDash([]); ctx.fillStyle='#f59e0b';
-    ctx.beginPath(); ctx.arc(padL+W-10, yEntry, 4, 0, Math.PI*2); ctx.fill();
-  }
-
-  // عنوان صغير
-  ctx.fillStyle='#9ca3af'; ctx.font='12px system-ui';
-  ctx.fillText(`نطاق عرض: آخر ${N} شمعة`, padL, padT-2+12);
-}
