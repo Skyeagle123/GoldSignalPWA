@@ -1,4 +1,4 @@
-/************ GoldSignals - app.js (stable + local datetime in table) ************/
+/************ GoldSignals - app.js (stable + local datetime + chart) ************/
 /* يعمل مع IDs التالية في الـHTML:
    csvInput, tf5, tf60, tfD, runBtn,
    livePrice, liveTime, summaryText,
@@ -270,7 +270,7 @@ function paintPivots(p){
   elS3&&(elS3.textContent=nf2.format(p.S3));
 }
 
-/* ✅ تعديل وحيد هنا: إضافة التاريخ/الوقت المحليين للجدول */
+/* ✅ الجدول مع التاريخ/الوقت المحليين */
 function paintTable(rows){
   if (!elRowsBody) return;
   elRowsBody.innerHTML='';
@@ -324,7 +324,7 @@ async function runAnalysis(){
     paintSummary(rsiNow, macdNow);
     paintIndicators(rsiNow, macdNow, emaFnow, emaSnow);
 
-    const piv = calcPivots(daily);
+    const piv = calcPivots(aggregateOHLC(rows5, 1440));
     paintPivots(piv);
 
     // جدول
@@ -333,7 +333,7 @@ async function runAnalysis(){
     }));
     paintTable(tableRows);
 
-    // نصيحة + (شارتك الحالي يبقى كما هو إن كان موجوداً لديك)
+    // نصيحة + رسم
     const dir = classify(rsiNow, macdNow);
     const advice = makeAdvice(dir, priceNow, emaFnow, piv, series);
     if (elAdviceIn && elAdviceOut){
@@ -349,10 +349,7 @@ async function runAnalysis(){
       }
     }
 
-    // ملاحظة: إذا كان عندك drawChart سابق، اتركه كما هو؛ الجدول فقط هو الذي تغيّر.
-    if (typeof drawChart === 'function') {
-      drawChart(series, advice);
-    }
+    drawChart(series, advice); // ← ترسيم الشارت
 
   }catch(err){
     alert(`تعذّر تحميل/تحليل البيانات: ${err.message||err}`);
@@ -395,3 +392,92 @@ setActiveTF(5);
 runAnalysis();
 refreshLive();
 setInterval(refreshLive, LIVE_REFRESH_SEC*1000);
+
+/*===================== الرسم البياني (Canvas) =====================*/
+function drawChart(series, advice){
+  const cvs = document.getElementById('gsChart');
+  if (!cvs || !series?.length) return;
+
+  // حجم على بيكسلات CSS (بدون تعقيد DPR لثبات القياس عند التبديل)
+  const cssW = cvs.clientWidth || 600;
+  const cssH = cvs.clientHeight || 320;
+  cvs.width  = cssW;
+  cvs.height = cssH;
+  const ctx = cvs.getContext('2d');
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,cssW,cssH);
+
+  const pad = 14;
+  const left = pad+6, right = cssW-pad, top = pad, bottom = cssH-pad-10;
+  const w = right-left, h = bottom-top;
+
+  const data = series.slice(-CHART_POINTS);
+
+  // نطاق Y (يشمل خطوط النصيحة)
+  const lows  = data.map(p => (Number.isFinite(p.low)?p.low:p.close));
+  const highs = data.map(p => (Number.isFinite(p.high)?p.high:p.close));
+  let minY = Math.min(...lows), maxY = Math.max(...highs);
+  const addIf = (v)=>{ if (Number.isFinite(v)) { minY=Math.min(minY,v); maxY=Math.max(maxY,v);} };
+  if (advice){ addIf(advice.entry); addIf(advice.sl); addIf(advice.tp1); addIf(advice.tp2); }
+  const padY = (maxY-minY)*0.08 || 1;
+  minY-=padY; maxY+=padY;
+
+  const yFor = (v)=> bottom - ( (v-minY)/(maxY-minY) )*h;
+  const dx = w / Math.max(1,(data.length-1));
+  const body = Math.max(1, dx*0.55);
+
+  // grid
+  ctx.strokeStyle = '#1f2937';
+  ctx.lineWidth = 1;
+  for (let k=0;k<=4;k++){
+    const y = top + k*(h/4);
+    ctx.beginPath(); ctx.moveTo(left,y); ctx.lineTo(right,y); ctx.stroke();
+  }
+
+  // شموع
+  for (let i=0;i<data.length;i++){
+    const p = data[i];
+    const o = Number.isFinite(p.open)?p.open:p.close;
+    const c = p.close;
+    const hi = Number.isFinite(p.high)?p.high:Math.max(o,c);
+    const lo = Number.isFinite(p.low) ?p.low :Math.min(o,c);
+
+    const x = left + i*dx;
+    const yO = yFor(o), yC = yFor(c), yH = yFor(hi), yL = yFor(lo);
+
+    const up = c>=o;
+    ctx.strokeStyle = up ? '#10b981' : '#ef4444';
+    ctx.fillStyle   = up ? 'rgba(16,185,129,0.85)' : 'rgba(239,68,68,0.85)';
+
+    // wick
+    ctx.beginPath(); ctx.moveTo(x,yH); ctx.lineTo(x,yL); ctx.stroke();
+
+    // body
+    const bh = Math.max(1, Math.abs(yC-yO));
+    ctx.fillRect(x-body/2, Math.min(yO,yC), body, bh);
+  }
+
+  // خطوط النصيحة
+  const dash = (y,color,text) => {
+    if (!Number.isFinite(y)) return;
+    ctx.setLineDash([6,6]);
+    ctx.strokeStyle = color; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(left,y); ctx.lineTo(right,y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = color;
+    ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto';
+    ctx.fillText(text, left+6, y-6);
+  };
+
+  if (advice?.entry) dash(yFor(advice.entry), '#60a5fa', `Entry/Break: ${nf2.format(advice.entry)}`);
+  if (advice?.tp1)   dash(yFor(advice.tp1),   '#22c55e', `TP1: ${nf2.format(advice.tp1)}`);
+  if (advice?.tp2)   dash(yFor(advice.tp2),   '#16a34a', `TP2: ${nf2.format(advice.tp2)}`);
+  if (advice?.sl)    dash(yFor(advice.sl),    '#ef4444', `SL: ${nf2.format(advice.sl)}`);
+
+  // نقطة السعر الأخيرة (دلالة)
+  const last = data[data.length-1];
+  if (last){
+    ctx.fillStyle='#f59e0b';
+    ctx.beginPath(); ctx.arc(right-6, yFor(last.close), 4, 0, Math.PI*2); ctx.fill();
+  }
+}
