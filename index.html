@@ -31,10 +31,6 @@
     .bad{color:var(--bad);font-weight:600}
     .warn{color:var(--warn);font-weight:600}
     .section-title{margin-bottom:6px}
-
-    /* ارتفاع الشارت مستقرّ بين الأطر الزمنية */
-    .chartWrap{position:relative;height:320px}
-    @media (min-width: 900px){ .chartWrap{height:420px} }
   </style>
 </head>
 <body>
@@ -96,12 +92,10 @@
       </div>
     </div>
 
-    <!-- (جديد) الرسم البياني -->
+    <!-- الرسم البياني (نفسه، بس تصليح داخل app.js) -->
     <div class="card">
       <h3 class="section-title">الرسم البياني</h3>
-      <div class="chartWrap">
-        <canvas id="priceChart"></canvas>
-      </div>
+      <canvas id="gsChart" height="320" style="width:100%"></canvas>
     </div>
 
     <!-- Pivot -->
@@ -141,9 +135,6 @@
     <p class="muted" style="font-size:12px">* هذا المشروع لأغراض تعليمية، وليست نصيحة استثمارية.</p>
   </div>
 
-  <!-- Chart.js (للرسم) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <!-- سكربت التطبيق -->
   <script src="app.js"></script>
 </body>
 </html>
