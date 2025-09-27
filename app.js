@@ -1,10 +1,10 @@
-/************ GoldSignals - app.js (stable + chart fix) ************/
+/************ GoldSignals - app.js (stable + chart sizing fix + entry/SL/TP overlay) ************/
 /* يعمل مع IDs التالية في الـHTML:
    csvInput, tf5, tf60, tfD, runBtn,
    livePrice, liveTime, summaryText,
    indRSI, indMACD, indEMAF, indEMAS,
    pivotP, r1, r2, r3, s1, s2, s3,
-   rowsBody, gsChart
+   rowsBody, gsChart, adviceIn, adviceOut
 */
 
 /*--------- إعدادات عامة ---------*/
@@ -36,6 +36,9 @@ const elR1 = $('r1'), elR2 = $('r2'), elR3 = $('r3');
 const elS1 = $('s1'), elS2 = $('s2'), elS3 = $('s3');
 
 const elRowsBody = $('rowsBody');
+
+const elAdviceIn  = $('adviceIn');
+const elAdviceOut = $('adviceOut');
 
 /* إعدادات المؤشرات (قابلة للتغيير من HTML إذا بدك) */
 const elEmaFast   = $('emaFast');
@@ -107,7 +110,7 @@ function parseCsv(text){
 
 async function fetchCsv(url){
   const u = (url && url.trim()) ? url.trim() : DEFAULT_5M_CSV;
-  const full = u.startsWith('http') ? u : `${u}?t=${Date.now()}`; // cache-bust
+  const full = u.startsWith('http') ? u : `${u}?t=${Date.now()}`;
   const r = await fetch(full, {cache:'no-store'});
   if (!r.ok) throw new Error(`CSV HTTP ${r.status}`);
   return parseCsv(await r.text());
@@ -186,6 +189,23 @@ function classify(rsiVal, macdVal){
   return 'حيادي';
 }
 
+/* ATR (للأهداف/الوقف) */
+function atr(series, period=14){
+  if (!series.length) return 0;
+  let trs = [];
+  for (let i=1;i<series.length;i++){
+    const h = series[i].high ?? series[i].close;
+    const l = series[i].low  ?? series[i].close;
+    const pc= series[i-1].close;
+    const tr = Math.max(h-l, Math.abs(h-pc), Math.abs(l-pc));
+    trs.push(tr);
+  }
+  if (!trs.length) return (series.at(-1).close||0)*0.005; // fallback 0.5%
+  const n = Math.min(period, trs.length);
+  const last = trs.slice(-n);
+  return last.reduce((a,b)=>a+b,0)/n;
+}
+
 /*--------- Pivot ---------*/
 function calcPivots(daily){
   if (!daily || daily.length<2) return null;
@@ -194,6 +214,27 @@ function calcPivots(daily){
   if (![H,L,C].every(Number.isFinite)) return null;
   const P=(H+L+C)/3, R1=2*P-L, S1=2*P-H, R2=P+(H-L), S2=P-(H-L), R3=H+2*(P-L), S3=L-2*(H-P);
   return {P,R1,R2,R3,S1,S2,S3};
+}
+
+/* نصيحة دخول/خروج بسيطة مبنية على الاتجاه + ATR + Pivot */
+function makeAdvice(dir, priceNow, emaFnow, piv, series){
+  const rng = atr(series, 14);
+  const step = Math.max(0.5, rng); // مسافة منطقية
+
+  if (dir==='شراء'){
+    const entry = Math.max(emaFnow, piv?.P ?? emaFnow);
+    const sl    = entry - step*0.7;
+    const tp1   = entry + step*1.2;
+    const tp2   = entry + step*2.4;
+    return {dir, entry, sl, tp1, tp2};
+  } else if (dir==='بيع'){
+    const entry = Math.min(emaFnow, piv?.P ?? emaFnow);
+    const sl    = entry + step*0.7;
+    const tp1   = entry - step*1.2;
+    const tp2   = entry - step*2.4;
+    return {dir, entry, sl, tp1, tp2};
+  }
+  return {dir:'حيادي'};
 }
 
 /*--------- رسم الواجهة ---------*/
@@ -281,8 +322,24 @@ async function runAnalysis(){
     }));
     paintTable(tableRows);
 
-    // رسم الشارت (تصليح القياس فقط)
-    drawChart(series);
+    // نصيحة + شارت
+    const dir = classify(rsiNow, macdNow);               // نفس منطق الملخص
+    const advice = makeAdvice(dir, priceNow, emaFnow, piv, series);
+
+    if (elAdviceIn && elAdviceOut){
+      if (advice.dir==='شراء'){
+        elAdviceIn.textContent  = `نصيحة الدخول: شراء عند اختراق/ارتداد قرب EMA ${nf2.format(advice.entry)}.`;
+        elAdviceOut.textContent = `نصيحة الخروج: وقف ${nf2.format(advice.sl)} • أهداف: ${nf2.format(advice.tp1)} ثم ${nf2.format(advice.tp2)}.`;
+      } else if (advice.dir==='بيع'){
+        elAdviceIn.textContent  = `نصيحة الدخول: بيع عند كسر/ارتداد قرب EMA ${nf2.format(advice.entry)}.`;
+        elAdviceOut.textContent = `نصيحة الخروج: وقف ${nf2.format(advice.sl)} • أهداف: ${nf2.format(advice.tp1)} ثم ${nf2.format(advice.tp2)}.`;
+      } else {
+        elAdviceIn.textContent  = 'نصيحة الدخول: حيادي.';
+        elAdviceOut.textContent = 'نصيحة الخروج: —';
+      }
+    }
+
+    drawChart(series, advice);
 
   }catch(err){
     alert(`تعذّر تحميل/تحليل البيانات: ${err.message||err}`);
@@ -327,10 +384,9 @@ refreshLive();
 setInterval(refreshLive, LIVE_REFRESH_SEC*1000);
 
 /* ===================================================== */
-/*                تصليح رسم الشارت فقط                   */
+/*        تصليح قياس الشارت + رسم خطوط Entry/SL/TP       */
 /* ===================================================== */
 
-// يقرأ ارتفاع الكانفاس الحقيقي من الـDOM/الـCSS لو تغيّر بين الأطر الزمنية
 function getCanvasCssHeight(canvas, fallback=320){
   let cssH = canvas.getBoundingClientRect?.().height;
   if (!cssH || cssH < 120) {
@@ -341,32 +397,30 @@ function getCanvasCssHeight(canvas, fallback=320){
   return cssH;
 }
 
-function drawChart(series){
+function drawChart(series, advice){
   const canvas = document.getElementById('gsChart');
   if (!canvas || !Array.isArray(series) || !series.length) return;
 
-  // ثبّت الحجم + صفّر التحويلات كل مرة (Fix التمدد)
+  // ثبّت الحجم عند كل تبديل TF (يحل مشكلة التشوّه)
   const dpr  = Math.max(1, window.devicePixelRatio || 1);
   const cssW = canvas.clientWidth || canvas.parentElement?.clientWidth || 800;
   const cssH = getCanvasCssHeight(canvas, canvas.getAttribute('height') ? parseFloat(canvas.getAttribute('height')) : 320);
-
   const wantW = Math.round(cssW * dpr);
   const wantH = Math.round(cssH * dpr);
   if (canvas.width !== wantW || canvas.height !== wantH) {
-    canvas.width  = wantW;   // reset context state
+    canvas.width  = wantW;
     canvas.height = wantH;
   }
   const ctx = canvas.getContext('2d');
-  ctx.setTransform(1,0,0,1,0,0);           // reset
+  ctx.setTransform(1,0,0,1,0,0);
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.scale(dpr, dpr);
 
-  // نافذة العرض
   const N = Math.min(CHART_POINTS, series.length);
   const data = series.slice(-N);
 
   // هوامش
-  const padL=50, padR=16, padT=12, padB=18;
+  const padL=54, padR=16, padT=14, padB=22;
   const W = cssW - padL - padR;
   const H = cssH - padT - padB;
 
@@ -420,10 +474,44 @@ function drawChart(series){
     ctx.stroke();
   }
 
-  // نقطة آخر سعر
+  // آخر نقطة
   const lastX = xAt(N-1), lastY = yAt(data[N-1].close);
   ctx.fillStyle = '#f59e0b';
   ctx.beginPath(); ctx.arc(lastX, lastY, 4, 0, Math.PI*2); ctx.fill();
+
+  // خطوط Entry/SL/TP (إن توفرت نصيحة)
+  if (advice && advice.dir && advice.dir!=='حيادي'){
+    // Entry (أزرق)
+    ctx.setLineDash([6,6]); ctx.lineWidth=1.4; ctx.strokeStyle='#60a5fa';
+    const yEntry = yAt(advice.entry);
+    ctx.beginPath(); ctx.moveTo(padL, yEntry); ctx.lineTo(padL+W, yEntry); ctx.stroke();
+    ctx.fillStyle='#60a5fa'; ctx.font='12px system-ui';
+    ctx.fillText(`Entry/Break: ${nf2.format(advice.entry)}`, padL+6, yEntry-6);
+
+    // SL (أحمر)
+    ctx.strokeStyle='#ef4444';
+    const ySL = yAt(advice.sl);
+    ctx.beginPath(); ctx.moveTo(padL, ySL); ctx.lineTo(padL+W, ySL); ctx.stroke();
+    ctx.fillStyle='#ef4444';
+    ctx.fillText(`SL: ${nf2.format(advice.sl)}`, padL+6, ySL-6);
+
+    // TP1 / TP2 (أخضر)
+    ctx.strokeStyle='#10b981';
+    const yTP1 = yAt(advice.tp1);
+    ctx.beginPath(); ctx.moveTo(padL, yTP1); ctx.lineTo(padL+W, yTP1); ctx.stroke();
+    ctx.fillStyle='#10b981';
+    ctx.fillText(`TP1: ${nf2.format(advice.tp1)}`, padL+6, yTP1-6);
+
+    if (Number.isFinite(advice.tp2)){
+      const yTP2 = yAt(advice.tp2);
+      ctx.beginPath(); ctx.moveTo(padL, yTP2); ctx.lineTo(padL+W, yTP2); ctx.stroke();
+      ctx.fillText(`TP2: ${nf2.format(advice.tp2)}`, padL+6, yTP2-6);
+    }
+
+    // نقطة توضيحية عند الحافة
+    ctx.setLineDash([]); ctx.fillStyle='#f59e0b';
+    ctx.beginPath(); ctx.arc(padL+W-10, yEntry, 4, 0, Math.PI*2); ctx.fill();
+  }
 
   // عنوان صغير
   ctx.fillStyle='#9ca3af'; ctx.font='12px system-ui';
