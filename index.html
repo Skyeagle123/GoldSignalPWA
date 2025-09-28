@@ -10,6 +10,8 @@
     :root{
       --bg:#0b1220; --card:#111827; --line:#1f2937; --muted:#9ca3af; --soft:#334155;
       --good:#10b981; --bad:#ef4444; --warn:#f59e0b; --txt:#e5e7eb;
+      --live:#ffffff; --grid:#203047; --candleUp:#16a34a; --candleDn:#ef4444;
+      --entry:#60a5fa; --sl:#f87171; --tp:#34d399;
     }
     html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif}
     header{position:sticky;top:0;z-index:5;background:#0b1220cc;border-bottom:1px solid var(--line);backdrop-filter:blur(6px)}
@@ -21,184 +23,145 @@
     .pill{border:1px solid var(--soft);background:transparent;color:var(--txt);padding:8px 12px;border-radius:999px;cursor:pointer}
     .pill.active{background:#0e1a31;border-color:#2b3a55}
     label{display:block;margin-bottom:6px;color:var(--muted);font-size:14px}
-    input,button,select{width:100%;padding:10px;border-radius:12px;border:1px solid var(--soft);background:#0b1220;color:var(--txt)}
+    input,button{width:100%;padding:10px;border-radius:12px;border:1px solid var(--soft);background:#0b1220;color:var(--txt)}
     button{cursor:pointer}
     h1,h2,h3{margin:0 0 10px 0}
     table{width:100%;border-collapse:collapse}
-    th,td{border-bottom:1px solid #273449;padding:10px;text-align:center;white-space:nowrap}
+    th,td{border-bottom:1px solid #273449;padding:10px;text-align:center}
     .muted{color:var(--muted)}
     .good{color:var(--good);font-weight:600}
     .bad{color:var(--bad);font-weight:600}
     .warn{color:var(--warn);font-weight:600}
     .section-title{margin-bottom:6px}
-    .chart-card canvas{width:100%;height:360px;display:block}
-    *{-webkit-font-smoothing:antialiased}
+
+    /* الشارت */
+    #chartWrap{position:relative;height:420px}
+    #chart{width:100%;height:100%;display:block;border-radius:12px;background:#0c1426}
+    .chart-legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;color:var(--muted);font-size:12px}
+    .key{display:inline-flex;align-items:center;gap:6px}
+    .box{width:14px;height:4px;border-radius:4px;background:#fff}
+    .box.entry{background:var(--entry)}
+    .box.sl{background:var(--sl)}
+    .box.tp{background:var(--tp)}
+    .box.live{background:var(--live)}
   </style>
 </head>
 <body>
-  <header><div class="bar">GoldSignals • إشارات الذهب</div></header>
+<header><div class="bar">GoldSignals • إشارات الذهب</div></header>
 
-  <div class="container">
+<div class="container">
 
-    <!-- مصدر البيانات + الإطار الزمني -->
-    <div class="card">
-      <div class="grid">
-        <div>
-          <label>رابط CSV للأسعار (اختياري):</label>
-          <input id="csvInput" placeholder="اتركه فاضي لاستعمال XAUUSD_5min.csv من نفس الريبو">
-          <div class="muted" style="margin-top:6px;font-size:12px">
-            إذا تركته فاضي سيقرأ تلقائياً من <code>XAUUSD_5min.csv</code>.
-          </div>
+  <!-- مصدر البيانات + الإطار الزمني -->
+  <div class="card">
+    <div class="grid">
+      <div>
+        <label>رابط CSV للأسعار (اختياري):</label>
+        <input id="csvInput" placeholder="اتركه فاضي لاستعمال XAUUSD_5min.csv من نفس الريبو">
+        <div class="muted" style="margin-top:6px;font-size:12px">
+          إذا تركته فاضي سيقرأ تلقائياً من <code>XAUUSD_5min.csv</code>.
         </div>
-        <div>
-          <label>إطار زمني:</label>
-          <div class="row">
-            <button id="tf5" class="pill active">5 دقائق</button>
-            <button id="tf30" class="pill">30 دقيقة</button>
-            <button id="tf60" class="pill">ساعة</button>
-            <button id="tfD" class="pill">يوم</button>
-            <button id="runBtn" class="pill" style="margin-inline-start:auto">حساب الإشارات الآن</button>
-          </div>
-          <div class="row" style="margin-top:8px;gap:16px">
-            <label class="muted"><input id="proMode" type="checkbox"> تفعيل نصيحة دقيقة</label>
-            <label class="muted"><input id="mtfConfirm" type="checkbox" checked> تأكيد 30 دقيقة لإشارات 5 دقائق</label>
-          </div>
+      </div>
+      <div>
+        <label>إطار زمني:</label>
+        <div class="row">
+          <button id="tf5" class="pill active">5 دقائق</button>
+          <button id="tf30" class="pill">30 دقيقة</button>
+          <button id="tf60" class="pill">ساعة</button>
+          <button id="tfD" class="pill">يوم</button>
+          <button id="runBtn" class="pill" style="margin-inline-start:auto">حساب الإشارات الآن</button>
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- السعر الحي + الملخص -->
-    <div class="card">
-      <h3 class="section-title">السعر الحي</h3>
-      <div class="grid">
-        <div>
-          <div id="livePrice" style="font-size:36px;font-weight:800;color:#ffffff">—</div>
-          <div id="liveTime" class="muted">—</div>
-        </div>
-        <div>
-          <label>الملخّص الآن:</label>
-          <div id="summaryText" style="font-size:18px;font-weight:700">—</div>
-        </div>
+  <!-- السعر الحي + الملخص -->
+  <div class="card">
+    <h3 class="section-title">السعر الحي</h3>
+    <div class="grid">
+      <div>
+        <div id="livePrice" style="font-size:36px;font-weight:800">—</div>
+        <div id="liveTime" class="muted">—</div>
+      </div>
+      <div>
+        <label>الملخّص الآن:</label>
+        <div id="summaryText" style="font-size:18px;font-weight:700">—</div>
       </div>
     </div>
+  </div>
 
-    <!-- المؤشرات السريعة -->
-    <div class="card">
-      <h3 class="section-title">جدول المؤشرات</h3>
-      <div class="grid">
-        <div>RSI: <b id="indRSI">—</b></div>
-        <div>MACD: <b id="indMACD">—</b></div>
-        <div>EMA سريع: <b id="indEMAF">—</b></div>
-        <div>EMA بطيء: <b id="indEMAS">—</b></div>
-      </div>
-      <div class="grid" style="margin-top:10px">
-        <div><label>EMA سريع</label><input id="emaFast" type="number" value="12"></div>
-        <div><label>EMA بطيء</label><input id="emaSlow" type="number" value="26"></div>
-        <div><label>فترة RSI</label><input id="rsiPeriod" type="number" value="14"></div>
-      </div>
+  <!-- المؤشرات السريعة -->
+  <div class="card">
+    <h3 class="section-title">جدول المؤشرات</h3>
+    <div class="grid">
+      <div>RSI: <b id="indRSI">—</b></div>
+      <div>MACD: <b id="indMACD">—</b></div>
+      <div>EMA سريع: <b id="indEMAF">—</b></div>
+      <div>EMA بطيء: <b id="indEMAS">—</b></div>
     </div>
 
-    <!-- إعدادات ATR Regime + Position Sizing -->
-    <div class="card">
-      <h3 class="section-title">إعدادات المخاطرة (ATR / SL / TP) + ATR Regime + حجم الصفقة</h3>
-      <div class="grid">
-        <div><label>فترة ATR</label><input id="atrPeriod" type="number" value="14" min="2" max="200"></div>
-        <div><label>SL (مضاعِف ATR)</label><input id="slMult" type="number" step="0.1" value="1.5"></div>
-        <div><label>TP1 (مضاعِف ATR)</label><input id="tp1Mult" type="number" step="0.1" value="1.0"></div>
-        <div><label>TP2 (مضاعِف ATR)</label><input id="tp2Mult" type="number" step="0.1" value="2.0"></div>
-        <div><label>ATR% أدنى (Regime)</label><input id="atrMinPct" type="number" step="0.01" value="0.05"></div>
-        <div><label>ATR% أعلى (Regime)</label><input id="atrMaxPct" type="number" step="0.01" value="0.80"></div>
-        <div><label>حجم الحساب</label><input id="acctSize" type="number" step="100" value="10000"></div>
-        <div><label>مخاطرة لكل صفقة %</label><input id="riskPct" type="number" step="0.1" value="1.0"></div>
-      </div>
-      <p class="muted" style="margin-top:6px;font-size:12px">
-        ATR% = (ATR/السعر)×100. الإشارة تُرفض إذا كانت خارج [الأدنى، الأعلى]. حجم الصفقة تقريبي (وحدات سعرية) بناءً على المسافة حتى وقف الخسارة.
-      </p>
+    <div class="grid" style="margin-top:10px">
+      <div><label>EMA سريع</label><input id="emaFast" type="number" value="12"></div>
+      <div><label>EMA بطيء</label><input id="emaSlow" type="number" value="26"></div>
+      <div><label>فترة RSI</label><input id="rsiPeriod" type="number" value="14"></div>
     </div>
+  </div>
 
-    <!-- الرسم البياني -->
-    <div class="card chart-card">
-      <h3 class="section-title">(SL/TP) الرسم البياني (دخول/خروج)</h3>
-      <canvas id="tradeChart" style="width:100%;height:360px;display:block"></canvas>
-      <p class="muted" style="margin-top:8px">
-        الأزرق = دخول • الأخضر = TP1/TP2 • الأحمر = SL • السماوي = السعر الحي (Live).
-      </p>
+  <!-- الشارت -->
+  <div class="card">
+    <h3 class="section-title">الرسم البياني (SL/TP/دخول/خروج)</h3>
+    <div id="chartWrap"><canvas id="chart"></canvas></div>
+    <div class="chart-legend">
+      <span class="key"><span class="box entry"></span>الأزرق = خطوط الدخول</span>
+      <span class="key"><span class="box tp"></span>الأخضر = الأهداف (TP1/TP2)</span>
+      <span class="key"><span class="box sl"></span>الأحمر = وقف الخسارة</span>
+      <span class="key"><span class="box live"></span>الأبيض = خط السعر الحي</span>
     </div>
+  </div>
 
-    <!-- نصيحة الدخول/الخروج المكتوبة -->
-    <div class="card">
-      <h3 class="section-title">نصيحة الدخول/الخروج</h3>
-      <div id="adviceText" class="muted">—</div>
-      <div class="muted" style="font-size:12px;margin-top:6px">* ليست توصية استثمارية.</div>
+  <!-- Pivot -->
+  <div class="card">
+    <h3 class="section-title">الدعم والمقاومة (Pivot)</h3>
+    <div class="grid">
+      <div>R1 <div id="r1">—</div></div>
+      <div>R2 <div id="r2">—</div></div>
+      <div>R3 <div id="r3">—</div></div>
+      <div>Pivot <div id="pivotP">—</div></div>
+      <div>S1 <div id="s1">—</div></div>
+      <div>S2 <div id="s2">—</div></div>
+      <div>S3 <div id="s3">—</div></div>
     </div>
-
-    <!-- Pivot -->
-    <div class="card">
-      <h3 class="section-title">الدعم والمقاومة (Pivot)</h3>
-      <div class="grid">
-        <div>R1 <div id="r1">—</div></div>
-        <div>R2 <div id="r2">—</div></div>
-        <div>R3 <div id="r3">—</div></div>
-        <div>Pivot <div id="pivotP">—</div></div>
-        <div>S1 <div id="s1">—</div></div>
-        <div>S2 <div id="s2">—</div></div>
-        <div>S3 <div id="s3">—</div></div>
-      </div>
-      <p class="muted" style="margin-top:8px">
-        يُحسب الـ Pivot من آخر يوم مكتمل باستخدام (High/Low/Close) المستخرجة من بيانات 5 دقائق.
-      </p>
-    </div>
-
-    <!-- البيانات الأخيرة -->
-    <div class="card">
-      <h3 class="section-title">البيانات الأخيرة</h3>
-      <div style="overflow:auto">
-        <table>
-          <thead>
-            <tr>
-              <th>التاريخ</th>
-              <th>الوقت (محلي)</th>
-              <th>السعر</th>
-              <th>الإشارة</th>
-              <th>RSI</th>
-              <th>MACD</th>
-              <th>EMA F</th>
-            </tr>
-          </thead>
-          <tbody id="rowsBody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Backtest -->
-    <div class="card">
-      <h3 class="section-title">اختبار الاستراتيجية (Backtest)</h3>
-      <div class="grid">
-        <div>
-          <label>الإطار الزمني للاختبار</label>
-          <select id="btTf">
-            <option value="5" selected>5 دقائق</option>
-            <option value="30">30 دقيقة</option>
-            <option value="60">ساعة</option>
-            <option value="1440">يوم</option>
-          </select>
-        </div>
-        <div>
-          <label>عدد الشموع الأخيرة (اختياري)</label>
-          <input id="btBars" type="number" min="100" value="1500">
-        </div>
-        <div style="align-self:end">
-          <button id="btRun">تشغيل الاختبار</button>
-        </div>
-      </div>
-      <div id="btResult" class="muted" style="margin-top:10px">—</div>
-    </div>
-
-    <p class="muted" style="font-size:12px">
-      * مشروع تعليمي، وليست نصيحة استثمارية.
+    <p class="muted" style="margin-top:8px">
+      يُحسب الـ Pivot من آخر يوم مكتمل باستخدام (High/Low/Close) المستخرجة من بيانات 5 دقائق.
     </p>
   </div>
 
-  <script src="app.js"></script>
+  <!-- البيانات الأخيرة -->
+  <div class="card">
+    <h3 class="section-title">البيانات الأخيرة</h3>
+    <div style="overflow:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>التاريخ</th>
+            <th>الوقت (محلي)</th>
+            <th>السعر</th>
+            <th>الإشارة</th>
+            <th>RSI</th>
+            <th>MACD</th>
+            <th>EMA F</th>
+          </tr>
+        </thead>
+        <tbody id="rowsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="muted" style="font-size:12px">
+    * هذا المشروع لأغراض تعليمية، وليست نصيحة استثمارية.
+  </p>
+</div>
+
+<script src="app.js"></script>
 </body>
 </html>
