@@ -21,7 +21,7 @@
     .pill{border:1px solid var(--soft);background:transparent;color:var(--txt);padding:8px 12px;border-radius:999px;cursor:pointer}
     .pill.active{background:#0e1a31;border-color:#2b3a55}
     label{display:block;margin-bottom:6px;color:var(--muted);font-size:14px}
-    input,button{width:100%;padding:10px;border-radius:12px;border:1px solid var(--soft);background:#0b1220;color:var(--txt)}
+    input,button,select{width:100%;padding:10px;border-radius:12px;border:1px solid var(--soft);background:#0b1220;color:var(--txt)}
     button{cursor:pointer}
     h1,h2,h3{margin:0 0 10px 0}
     table{width:100%;border-collapse:collapse}
@@ -31,8 +31,7 @@
     .bad{color:var(--bad);font-weight:600}
     .warn{color:var(--warn);font-weight:600}
     .section-title{margin-bottom:6px}
-    /* تحسين وضوح الشارت */
-    .chart-card canvas{width:100%;height:340px;display:block}
+    .chart-card canvas{width:100%;height:360px;display:block}
     *{-webkit-font-smoothing:antialiased}
   </style>
 </head>
@@ -60,9 +59,9 @@
             <button id="tfD" class="pill">يوم</button>
             <button id="runBtn" class="pill" style="margin-inline-start:auto">حساب الإشارات الآن</button>
           </div>
-          <!-- نصيحة دقيقة -->
-          <div class="row" style="margin-top:8px">
+          <div class="row" style="margin-top:8px;gap:16px">
             <label class="muted"><input id="proMode" type="checkbox"> تفعيل نصيحة دقيقة</label>
+            <label class="muted"><input id="mtfConfirm" type="checkbox" checked> تأكيد 30 دقيقة لإشارات 5 دقائق</label>
           </div>
         </div>
       </div>
@@ -73,7 +72,6 @@
       <h3 class="section-title">السعر الحي</h3>
       <div class="grid">
         <div>
-          <!-- اللون أبيض -->
           <div id="livePrice" style="font-size:36px;font-weight:800;color:#ffffff">—</div>
           <div id="liveTime" class="muted">—</div>
         </div>
@@ -93,8 +91,6 @@
         <div>EMA سريع: <b id="indEMAF">—</b></div>
         <div>EMA بطيء: <b id="indEMAS">—</b></div>
       </div>
-
-      <!-- إعدادات المؤشرات -->
       <div class="grid" style="margin-top:10px">
         <div><label>EMA سريع</label><input id="emaFast" type="number" value="12"></div>
         <div><label>EMA بطيء</label><input id="emaSlow" type="number" value="26"></div>
@@ -102,29 +98,21 @@
       </div>
     </div>
 
-    <!-- إعدادات ATR و SL/TP -->
+    <!-- إعدادات ATR Regime + Position Sizing -->
     <div class="card">
-      <h3 class="section-title">إعدادات المخاطرة (ATR / SL / TP)</h3>
+      <h3 class="section-title">إعدادات المخاطرة (ATR / SL / TP) + ATR Regime + حجم الصفقة</h3>
       <div class="grid">
-        <div>
-          <label>فترة ATR</label>
-          <input id="atrPeriod" type="number" value="14" min="2" max="200">
-        </div>
-        <div>
-          <label>SL (مضاعِف ATR)</label>
-          <input id="slMult" type="number" step="0.1" value="1.5">
-        </div>
-        <div>
-          <label>TP1 (مضاعِف ATR)</label>
-          <input id="tp1Mult" type="number" step="0.1" value="1.0">
-        </div>
-        <div>
-          <label>TP2 (مضاعِف ATR)</label>
-          <input id="tp2Mult" type="number" step="0.1" value="2.0">
-        </div>
+        <div><label>فترة ATR</label><input id="atrPeriod" type="number" value="14" min="2" max="200"></div>
+        <div><label>SL (مضاعِف ATR)</label><input id="slMult" type="number" step="0.1" value="1.5"></div>
+        <div><label>TP1 (مضاعِف ATR)</label><input id="tp1Mult" type="number" step="0.1" value="1.0"></div>
+        <div><label>TP2 (مضاعِف ATR)</label><input id="tp2Mult" type="number" step="0.1" value="2.0"></div>
+        <div><label>ATR% أدنى (Regime)</label><input id="atrMinPct" type="number" step="0.01" value="0.05"></div>
+        <div><label>ATR% أعلى (Regime)</label><input id="atrMaxPct" type="number" step="0.01" value="0.80"></div>
+        <div><label>حجم الحساب</label><input id="acctSize" type="number" step="100" value="10000"></div>
+        <div><label>مخاطرة لكل صفقة %</label><input id="riskPct" type="number" step="0.1" value="1.0"></div>
       </div>
       <p class="muted" style="margin-top:6px;font-size:12px">
-        تُستخدم هذه القيم لحساب وقف الخسارة والأهداف في «نصيحة الدخول/الخروج».
+        ATR% = (ATR/السعر)×100. الإشارة تُرفض إذا كانت خارج [الأدنى، الأعلى]. حجم الصفقة تقريبي (وحدات سعرية) بناءً على المسافة حتى وقف الخسارة.
       </p>
     </div>
 
@@ -133,7 +121,7 @@
       <h3 class="section-title">(SL/TP) الرسم البياني (دخول/خروج)</h3>
       <canvas id="tradeChart" style="width:100%;height:360px;display:block"></canvas>
       <p class="muted" style="margin-top:8px">
-        الأزرق = خط دخول • الأخضر = أهداف (TP1/TP2) • الأحمر = وقف الخسارة • السماوي = السعر الحي (Live).
+        الأزرق = دخول • الأخضر = TP1/TP2 • الأحمر = SL • السماوي = السعر الحي (Live).
       </p>
     </div>
 
@@ -161,7 +149,7 @@
       </p>
     </div>
 
-    <!-- البيانات الأخيرة (مع تاريخ ووقت محلي) -->
+    <!-- البيانات الأخيرة -->
     <div class="card">
       <h3 class="section-title">البيانات الأخيرة</h3>
       <div style="overflow:auto">
@@ -182,8 +170,32 @@
       </div>
     </div>
 
+    <!-- Backtest -->
+    <div class="card">
+      <h3 class="section-title">اختبار الاستراتيجية (Backtest)</h3>
+      <div class="grid">
+        <div>
+          <label>الإطار الزمني للاختبار</label>
+          <select id="btTf">
+            <option value="5" selected>5 دقائق</option>
+            <option value="30">30 دقيقة</option>
+            <option value="60">ساعة</option>
+            <option value="1440">يوم</option>
+          </select>
+        </div>
+        <div>
+          <label>عدد الشموع الأخيرة (اختياري)</label>
+          <input id="btBars" type="number" min="100" value="1500">
+        </div>
+        <div style="align-self:end">
+          <button id="btRun">تشغيل الاختبار</button>
+        </div>
+      </div>
+      <div id="btResult" class="muted" style="margin-top:10px">—</div>
+    </div>
+
     <p class="muted" style="font-size:12px">
-      * هذا المشروع لأغراض تعليمية، وليست نصيحة استثمارية.
+      * مشروع تعليمي، وليست نصيحة استثمارية.
     </p>
   </div>
 
