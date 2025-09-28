@@ -31,8 +31,7 @@
     .bad{color:var(--bad);font-weight:600}
     .warn{color:var(--warn);font-weight:600}
     .section-title{margin-bottom:6px}
-
-    /* ==== تحسين وضوح الشارت (لا يغيّر أي منطق) ==== */
+    /* تحسين وضوح الشارت (بدون تغيير المنطق) */
     .chart-card canvas{width:100%;height:340px;display:block}
     *{-webkit-font-smoothing:antialiased}
   </style>
@@ -59,6 +58,10 @@
             <button id="tf60" class="pill">ساعة</button>
             <button id="tfD" class="pill">يوم</button>
             <button id="runBtn" class="pill" style="margin-inline-start:auto">حساب الإشارات الآن</button>
+          </div>
+          <!-- زر تفعيل النصيحة الدقيقة (إضافة صغيرة) -->
+          <div class="row" style="margin-top:8px">
+            <label class="muted"><input id="proMode" type="checkbox"> تفعيل نصيحة دقيقة</label>
           </div>
         </div>
       </div>
@@ -102,7 +105,8 @@
       <h3 class="section-title">(SL/TP) الرسم البياني (دخول/خروج)</h3>
       <canvas id="tradeChart"></canvas>
       <p class="muted" style="margin-top:8px">
-        الأزرق = خطوط للدخول (اختراق/ارتداد قرب EMA) • الأخضر = أهداف (TP1/TP2) • الأحمر = وقف الخسارة.
+        الأزرق = خطوط للدخول (اختراق/ارتداد قرب EMA) • الأخضر = أهداف (TP1/TP2) • الأحمر = وقف الخسارة •
+        السماوي = السعر الحي (Live).
       </p>
     </div>
 
