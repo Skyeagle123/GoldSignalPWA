@@ -2,9 +2,9 @@
 const LIVE_JSON_URL    = 'https://goldprice-proxy.samer-mourtada.workers.dev/price';
 const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';
 const TABLE_ROWS       = 80;
-const LIVE_REFRESH_SEC = 1; // حي كل ثانية
+const LIVE_REFRESH_SEC = 1; // تحديث السعر الحي كل ثانية
 
-/* عناصر */
+/* عناصر DOM */
 const $ = (id) => document.getElementById(id);
 const elCsvInput = $('csvInput');
 const elTf5 = $('tf5'), elTf30 = $('tf30'), elTf60 = $('tf60'), elTfD = $('tfD');
@@ -27,7 +27,7 @@ elEmaFast?.addEventListener('input', ()=> EMA_FAST = parseInt(elEmaFast.value||'
 elEmaSlow?.addEventListener('input', ()=> EMA_SLOW = parseInt(elEmaSlow.value||'26',10));
 elRsiPeriod?.addEventListener('input',()=> RSI_PER  = parseInt(elRsiPeriod.value||'14',10));
 
-/* تنسيق */
+/* تنسيق أرقام ووقت (محلي) */
 const nf2 = new Intl.NumberFormat('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 const nf4 = new Intl.NumberFormat('en-US', {minimumFractionDigits:4, maximumFractionDigits:4});
 const fmtDate = new Intl.DateTimeFormat(undefined, {year:'numeric',month:'2-digit',day:'2-digit'});
@@ -52,6 +52,7 @@ function parseCsv(text){
   const header = lines[0].toLowerCase();
   const out=[];
   if(header.includes('symbol') && header.includes('date') && header.includes('time')){
+    // Stooq: Symbol,Date,Time,Open,High,Low,Close,Volume
     for(let i=1;i<lines.length;i++){
       const [sym,d,t,o,h,l,c] = lines[i].split(',');
       if(!d||!t) continue;
@@ -68,6 +69,7 @@ function parseCsv(text){
       }
     }
   }else{
+    // بسيط: Date,Close
     for(let i=1;i<lines.length;i++){
       const [d,c] = lines[i].split(',');
       const ts = Date.parse(d);
@@ -168,6 +170,12 @@ function calcPivots(daily){
 }
 
 /* عرض */
+function classifyBase(rsiVal, macdVal){
+  if (macdVal==null || rsiVal==null) return 'حيادي';
+  if (macdVal>0 && rsiVal>=50 && rsiVal<=70) return 'شراء';
+  if (macdVal<0 && rsiVal<=50) return 'بيع';
+  return 'حيادي';
+}
 function paintLive(price, ts){
   if(elLivePrice&&Number.isFinite(price)) elLivePrice.textContent=nf2.format(price);
   if(elLiveTime&&ts) elLiveTime.textContent = toLocal(new Date(ts));
@@ -177,12 +185,6 @@ function paintIndicators(rsiVal, macdVal, emaFv, emaSv){
   if(elIndMACD) elIndMACD.textContent = Number.isFinite(macdVal)?nf4.format(macdVal):'—';
   if(elIndEMAF) elIndEMAF.textContent = Number.isFinite(emaFv)?nf2.format(emaFv):'—';
   if(elIndEMAS) elIndEMAS.textContent = Number.isFinite(emaSv)?nf2.format(emaSv):'—';
-}
-function classifyBase(rsiVal, macdVal){
-  if (macdVal==null || rsiVal==null) return 'حيادي';
-  if (macdVal>0 && rsiVal>=50 && rsiVal<=70) return 'شراء';
-  if (macdVal<0 && rsiVal<=50) return 'بيع';
-  return 'حيادي';
 }
 function paintSummary(rsiVal, macdVal){
   if(!elSummaryText) return;
@@ -220,7 +222,7 @@ function paintTable(rows){
   }
 }
 
-/* Advice */
+/* نصيحة دخول/خروج (ATR + EMA + Pivot) */
 function buildAdvice(series, rsiArr, macdObj, daily){
   if(!series.length) return null;
   const i=series.length-1;
@@ -236,7 +238,7 @@ function buildAdvice(series, rsiArr, macdObj, daily){
   if(sNow==='شراء'){
     entry=Math.max(price, Number.isFinite(emaS)?emaS:price);
     sl = entry - SL_ATR_MULT*aNow;
-    tp1= entry + TP1_ATR_MULT*aNow; // ← fixed
+    tp1= entry + TP1_ATR_MULT*aNow; // ✅ fixed typo
     tp2= entry + TP2_ATR_MULT*aNow;
     note='شراء قرب/اختراق EMA';
   }else if(sNow==='بيع'){
@@ -246,7 +248,7 @@ function buildAdvice(series, rsiArr, macdObj, daily){
     tp2= entry - TP2_ATR_MULT*aNow;
     note='بيع قرب/كسر EMA';
   }else{
-    return {text:'إشارة حيادية حالياً.', entry:undefined, sl:undefined,tp1:undefined,tp2:undefined};
+    return {text:'إشارة حيادية حالياً.'};
   }
 
   const piv=calcPivots(daily);
@@ -265,7 +267,7 @@ function paintAdvice(a){
   elAdvBox.textContent = a?.text || '—';
 }
 
-/* رسم بسيط كانفاس */
+/* رسم الشموع + خطوط الدخول/الخروج */
 function drawChart(series, lines){
   const canvas = $('chartCanvas');
   if(!canvas || !series?.length) return;
@@ -330,10 +332,14 @@ function drawChart(series, lines){
   hline(lines?.tp1,'#22c55e','TP1');
   hline(lines?.tp2,'#22c55e','TP2');
   hline(lines?.sl ,'#f87171','SL');
-  if(Number.isFinite(window.__livePrice)){ hline(window.__livePrice,'#ffffff','Live'); }
+
+  // خط السعر الحي (أبيض)
+  if(Number.isFinite(window.__livePrice)){
+    hline(window.__livePrice,'#ffffff','Live');
+  }
 }
 
-/* تحليل رئيسي */
+/* التحليل الرئيسي */
 async function runAnalysis(){
   try{
     const csvUrl=elCsvInput?.value?.trim()||'';
@@ -365,14 +371,14 @@ async function runAnalysis(){
     const lines = adv ? {entry:adv.entry, sl:adv.sl, tp1:adv.tp1, tp2:adv.tp2} : null;
     drawChart(series, lines);
 
-    window.__lastSeries = series; // لرسومات تالية
+    window.__lastSeries = series; // للاستخدام عند إعادة رسم خط السعر الحي
   }catch(err){
     alert(`تعذّر تحميل/تحليل البيانات: ${err.message||err}`);
     console.error(err);
   }
 }
 
-/* حي */
+/* السعر الحي */
 async function refreshLive(){
   try{
     const r=await fetch(LIVE_JSON_URL,{cache:'no-store'});
@@ -382,8 +388,8 @@ async function refreshLive(){
       const t=Date.now();
       window.__livePrice=j.price;
       paintLive(j.price,t);
-      // إعادة رسم الخط الحي فوق الشارت الحالي (إن وُجدت بيانات)
       if(window.__lastSeries?.length){
+        // إعادة رسم الشارت مع خط السعر الحي
         drawChart(window.__lastSeries, null);
       }
     }
