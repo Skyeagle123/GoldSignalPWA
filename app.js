@@ -1,6 +1,6 @@
-/************ GoldSignals - app.js (stable) ************/
+/************ GoldSignals - app.js (stable + live line + precise toggle) ************/
 /* يعمل مع IDs التالية في الـHTML:
-   csvInput, tf5, tf60, tfD, runBtn,
+   csvInput, tf5, tf60, tfD, runBtn, proMode,
    livePrice, liveTime, summaryText,
    indRSI, indMACD, indEMAF, indEMAS,
    pivotP, r1, r2, r3, s1, s2, s3,
@@ -11,7 +11,8 @@
 const LIVE_JSON_URL    = 'https://goldprice-proxy.samer-mourtada.workers.dev/price';
 const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';   // إذا تركت الحقل فاضي
 const TABLE_ROWS       = 80;
-const LIVE_REFRESH_SEC = 30;
+/* تحديث السعر الحي كل ثانية كما طلبت */
+const LIVE_REFRESH_SEC = 1;
 
 /*--------- التقاط عناصر الواجهة ---------*/
 const $ = (id) => document.getElementById(id);
@@ -20,6 +21,7 @@ const elTf5        = $('tf5');
 const elTf60       = $('tf60');
 const elTfD        = $('tfD');
 const elBtnRun     = $('runBtn');
+const elProMode    = $('proMode');
 
 const elLivePrice  = $('livePrice');
 const elLiveTime   = $('liveTime');
@@ -36,7 +38,7 @@ const elS1 = $('s1'), elS2 = $('s2'), elS3 = $('s3');
 
 const elRowsBody = $('rowsBody');
 
-/* إعدادات المؤشرات (قابلة للتغيير من HTML إذا بدك) */
+/* إعدادات المؤشرات */
 const elEmaFast   = $('emaFast');
 const elEmaSlow   = $('emaSlow');
 const elRsiPeriod = $('rsiPeriod');
@@ -44,22 +46,19 @@ const elRsiPeriod = $('rsiPeriod');
 let EMA_FAST = parseInt(elEmaFast?.value || '12', 10);
 let EMA_SLOW = parseInt(elEmaSlow?.value || '26', 10);
 let RSI_PER  = parseInt(elRsiPeriod?.value || '14', 10);
+let PRO_MODE = !!elProMode?.checked;     // نصيحة دقيقة (تشديد الشروط)
 
 elEmaFast?.addEventListener('input', ()=> EMA_FAST = parseInt(elEmaFast.value||'12',10));
 elEmaSlow?.addEventListener('input', ()=> EMA_SLOW = parseInt(elEmaSlow.value||'26',10));
 elRsiPeriod?.addEventListener('input',()=> RSI_PER  = parseInt(elRsiPeriod.value||'14',10));
+elProMode?.addEventListener('change',()=>{ PRO_MODE = elProMode.checked; runAnalysis(); });
 
 /*--------- تنسيقات أرقام + وقت محلي ---------*/
 const nf2 = new Intl.NumberFormat('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 const nf4 = new Intl.NumberFormat('en-US', {minimumFractionDigits:4, maximumFractionDigits:4});
 
-function toLocalDate(ts){
-  // ISO محلي yyyy-mm-dd (مثل لقطاتك)
-  return new Date(ts).toLocaleDateString('en-CA'); // 2025-09-26
-}
-function toLocalTime(ts){
-  return new Date(ts).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'}); // 23:05
-}
+function toLocalDate(ts){ return new Date(ts).toLocaleDateString('en-CA'); } // 2025-09-26
+function toLocalTime(ts){ return new Date(ts).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'}); } // 23:05
 function fmtLocalDateTime(isoOrTs){
   const d = new Date(isoOrTs);
   const date = d.toLocaleDateString('en-CA');
@@ -85,7 +84,7 @@ function parseCsv(text){
   const out = [];
 
   if (header.includes('symbol') && header.includes('date') && header.includes('time')) {
-    // صيغة Stooq: Symbol,Date,Time,Open,High,Low,Close,Volume
+    // Stooq: Symbol,Date,Time,Open,High,Low,Close,Volume
     for (let i=1;i<lines.length;i++){
       const [sym,d,t,o,h,l,c] = lines[i].split(',');
       if (!d || !t) continue;
@@ -119,7 +118,6 @@ function parseCsv(text){
 
 async function fetchCsv(url){
   const u = (url && url.trim()) ? url.trim() : DEFAULT_5M_CSV;
-  // ضمان https ومسار صحيح
   const full = u.startsWith('http') ? u : `${u}?t=${Date.now()}`;
   const r = await fetch(full, {cache:'no-store'});
   if (!r.ok) throw new Error(`CSV HTTP ${r.status}`);
@@ -192,11 +190,26 @@ function macd(series, fast=12, slow=26, signal=9){
   }
   return { emaF, emaS, macd:m, signal:sigFull };
 }
-function classify(rsiVal, macdVal){
+
+/* التصنيف العادي */
+function classifyBase(rsiVal, macdVal){
   if (macdVal==null || rsiVal==null) return 'حيادي';
   if (macdVal>0 && rsiVal>=50 && rsiVal<=70) return 'شراء';
   if (macdVal<0 && rsiVal<=50) return 'بيع';
   return 'حيادي';
+}
+/* التصنيف الدقيق (أكثر تشددًا) */
+function classifyPrecise({rsiVal, macdNow, macdPrev, macdSig, price, emaF, emaS}){
+  if ([rsiVal, macdNow, emaF, emaS].some(v=>!Number.isFinite(v))) return 'حيادي';
+  const crossUp   = Number.isFinite(macdPrev) && macdPrev<=macdSig && macdNow>macdSig;
+  const crossDown = Number.isFinite(macdPrev) && macdPrev>=macdSig && macdNow<macdSig;
+  if ((crossUp || macdNow>macdSig) && price>emaF && emaF>emaS && rsiVal>50 && rsiVal<68) return 'شراء';
+  if ((crossDown || macdNow<macdSig) && price<emaF && emaF<emaS && rsiVal<50)          return 'بيع';
+  return 'حيادي';
+}
+
+function classifyFinal(ctx){
+  return PRO_MODE ? classifyPrecise(ctx) : classifyBase(ctx.rsiVal, ctx.macdNow);
 }
 
 /*--------- Pivot ---------*/
@@ -212,9 +225,7 @@ function calcPivots(daily){
 /*--------- رسم الواجهة ---------*/
 function paintLive(price, iso){
   if (elLivePrice && Number.isFinite(price)) elLivePrice.textContent = nf2.format(price);
-  if (elLiveTime  && iso){
-    elLiveTime.textContent = fmtLocalDateTime(iso); // محلي
-  }
+  if (elLiveTime  && iso) elLiveTime.textContent = fmtLocalDateTime(iso); // محلي
 }
 function paintIndicators(rsiVal, macdVal, emaFv, emaSv){
   if (elIndRSI)  elIndRSI.textContent  = Number.isFinite(rsiVal)  ? nf2.format(rsiVal)  : '—';
@@ -222,10 +233,10 @@ function paintIndicators(rsiVal, macdVal, emaFv, emaSv){
   if (elIndEMAF) elIndEMAF.textContent = Number.isFinite(emaFv)   ? nf2.format(emaFv)   : '—';
   if (elIndEMAS) elIndEMAS.textContent = Number.isFinite(emaSv)   ? nf2.format(emaSv)   : '—';
 }
-function paintSummary(rsiVal, macdVal){
+function paintSummary(rsiVal, macdVal, extras){
   if (!elSummaryText) return;
-  const s = classify(rsiVal, macdVal);
-  elSummaryText.textContent = s;
+  const s = classifyFinal({rsiVal, macdNow:extras?.macdNow, macdPrev:extras?.macdPrev, macdSig:extras?.macdSig, price:extras?.price, emaF:extras?.emaF, emaS:extras?.emaS});
+  elSummaryText.textContent = s + (PRO_MODE?' (دقيق)':'');
   elSummaryText.style.color = s==='شراء' ? '#10b981' : s==='بيع' ? '#ef4444' : '#f59e0b';
 }
 function paintPivots(p){
@@ -243,7 +254,7 @@ function paintTable(rows){
   elRowsBody.innerHTML='';
   const last = rows.slice(-TABLE_ROWS).reverse();
   for (const r of last){
-    const s = classify(r.rsi, r.macd);
+    const s = classifyBase(r.rsi, r.macd); // في الجدول نخليها كما هي (عادية)
     const color = s==='شراء'?'#10b981':s==='بيع'?'#ef4444':'#f59e0b';
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -284,7 +295,7 @@ function renderTradeChart(series, lines){
   let minY = Math.min(...data.map(d=>d.low));
   let maxY = Math.max(...data.map(d=>d.high));
   const add = v => { if (Number.isFinite(v)){ minY = Math.min(minY, v); maxY = Math.max(maxY, v); } };
-  add(lines?.entry); add(lines?.sl); add(lines?.tp1); add(lines?.tp2);
+  add(lines?.entry); add(lines?.sl); add(lines?.tp1); add(lines?.tp2); add(window.__livePrice);
 
   if (minY === maxY){ minY-=1; maxY+=1; }
   const pad = (maxY-minY)*0.08; minY-=pad; maxY+=pad;
@@ -334,8 +345,7 @@ function renderTradeChart(series, lines){
     const tag=`${label}: ${nf2.format(val)}`;
     const tw=ctx.measureText(tag).width+10, th=18, bx=x0+8, by=y-th-6;
     ctx.fillStyle='#0b1220'; ctx.strokeStyle=color; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.roundRect?.(bx,by,tw,th,6); // بعض المتصفحات القديمة ما فيها roundRect
-    if(!ctx.roundRect){ ctx.rect(bx,by,tw,th); }
+    ctx.beginPath(); ctx.roundRect?.(bx,by,tw,th,6); if(!ctx.roundRect){ ctx.rect(bx,by,tw,th); }
     ctx.fill(); ctx.stroke();
     ctx.fillStyle=color; ctx.font='12px system-ui'; ctx.textAlign='left'; ctx.textBaseline='middle';
     ctx.fillText(tag,bx+6,by+th/2);
@@ -345,7 +355,12 @@ function renderTradeChart(series, lines){
   drawHLine(lines?.entry,'#60a5fa','Entry');
   drawHLine(lines?.tp1,'#22c55e','TP1');
   drawHLine(lines?.tp2,'#22c55e','TP2');
-  drawHLine(lines?.sl,'#f87171','SL');
+  drawHLine(lines?.sl ,'#f87171','SL');
+
+  /* خط السعر الحي (سماوي) */
+  if (Number.isFinite(window.__livePrice)) {
+    drawHLine(window.__livePrice,'#67e8f9','Live');
+  }
 
   const last=data[data.length-1];
   if(last){
@@ -354,9 +369,7 @@ function renderTradeChart(series, lines){
   }
 }
 window.addEventListener('resize', ()=>{
-  if (window.__lastSeriesForChart) {
-    renderTradeChart(window.__lastSeriesForChart, window.__lastLinesForChart);
-  }
+  if (window.__lastSeriesForChart) renderTradeChart(window.__lastSeriesForChart, window.__lastLinesForChart);
 });
 /* ===================[ نهاية قسم الرسم ]=================== */
 
@@ -364,36 +377,34 @@ window.addEventListener('resize', ()=>{
 async function runAnalysis(){
   try{
     const csvUrl = elCsvInput?.value?.trim() || '';
-    let rows5 = await fetchCsv(csvUrl);           // 5m OHLC(أو Close-only)
+    let rows5 = await fetchCsv(csvUrl);
     if (!rows5.length) throw new Error('ملف CSV فارغ');
 
-    // يومي من 5 دقائق
     const daily = aggregateOHLC(rows5, 1440);
 
-    // اختيار الإطار الزمني
     let series = rows5;
     if (currentTF===60)   series = aggregateOHLC(rows5, 60);
     if (currentTF===1440) series = daily;
 
-    // مؤشرات
     const rsiArr  = rsi(series, RSI_PER);
     const macdObj = macd(series, EMA_FAST, EMA_SLOW, 9);
 
-    // آخر نقطة
     const i = series.length-1;
     const priceNow = series[i].close;
     const rsiNow   = rsiArr[i];
     const macdNow  = macdObj.macd[i];
+    const macdPrev = macdObj.macd[i-1];
+    const macdSig  = macdObj.signal[i];
     const emaFnow  = macdObj.emaF[i];
     const emaSnow  = macdObj.emaS[i];
 
-    paintSummary(rsiNow, macdNow);
+    paintSummary(rsiNow, macdNow, {macdPrev, macdSig, price:priceNow, emaF:emaFnow, emaS:emaSnow});
     paintIndicators(rsiNow, macdNow, emaFnow, emaSnow);
 
     const piv = calcPivots(daily);
     paintPivots(piv);
 
-    // جدول (مع تاريخ/وقت محلي)
+    // جدول مع تاريخ/وقت محلي
     const tableRows = series.map((p,idx)=>({
       ts:p.ts,
       date: toLocalDate(p.ts),
@@ -405,7 +416,7 @@ async function runAnalysis(){
     }));
     paintTable(tableRows);
 
-    // ==== رسم الشارت (لا يغيّر منطقك) ====
+    // رسم الشارت (نفس المنطق، فقط نمرّر الخطوط)
     const lines = {
       entry: Number.isFinite(emaFnow) ? emaFnow : undefined, // الأزرق
       sl:    piv?.P,   // الأحمر
@@ -430,7 +441,10 @@ async function refreshLive(){
     const j = await r.json();
     if (j && j.ok && Number.isFinite(j.price)){
       const iso = j.isoTime || (j.date && j.time ? `${j.date}T${j.time}Z` : Date.now());
-      paintLive(j.price, iso); // محلي
+      paintLive(j.price, iso);  // محلي
+      /* خزّن السعر الحي ليرسمه الشارت */
+      window.__livePrice = j.price;
+      if (window.__lastSeriesForChart) renderTradeChart(window.__lastSeriesForChart, window.__lastLinesForChart);
     }
   }catch(e){ console.warn('Live error:', e); }
 }
