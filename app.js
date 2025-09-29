@@ -2,7 +2,7 @@
 const LIVE_JSON_URL    = 'https://goldprice-proxy.samer-mourtada.workers.dev/price';
 const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';
 const TABLE_ROWS       = 80;
-const LIVE_REFRESH_SEC = 1;   // تحديث السعر الحي كل ثانية
+const LIVE_REFRESH_SEC = 1;
 
 /*---------- عناصر الواجهة ----------*/
 const $ = (id) => document.getElementById(id);
@@ -53,7 +53,7 @@ const elRiskPct   = $('riskPct');
 const elAlertEnable  = $('alertEnable');
 const elAlertDist    = $('alertDistance');
 
-/* Backtest (باقي كما هو في نسختك) */
+/* Backtest */
 const elBtTf      = $('btTf');
 const elBtBars    = $('btBars');
 const elBtRun     = $('btRun');
@@ -448,12 +448,27 @@ function calcPositionSize(entry, sl){
   return { riskAmt, units };
 }
 
-function classifyForAdvice(series, rsiArr, macdObj){
+/* ——— توحيد منطق الإشارة للشارت والنصيحة ——— */
+function filteredSignal(tf, series, rsiArr, macdObj, atrArr, rows5Ref, rows30Ref){
   const i = series.length-1;
   const ctx = rsiMacdContext(series, rsiArr, macdObj, i);
-  return classifyFinal(ctx);
+  let sig = classifyFinal(ctx);
+
+  // ATR Regime
+  const nowPx = series[i].close;
+  const atrv  = atrArr?.[i];
+  const apct  = atrPct(atrv, nowPx);
+  if (Number.isFinite(apct) && (apct < ATR_MIN_PCT || apct > ATR_MAX_PCT)) sig = 'حيادي';
+
+  // MTF confirm لإطار 5 دقائق
+  if (tf===5 && sig!=='حيادي' && rows5Ref && rows30Ref){
+    const ok = mtfOkIfEnabled(rows5Ref, rows30Ref);
+    if (!ok) sig = 'حيادي';
+  }
+  return sig;
 }
 
+/* نصيحة مكتوبة */
 function buildAdvice(tf, series, rsiArr, macdObj, pivots, liveInfo, atrArr, rows5Ref, rows30Ref){
   if (!series?.length) return '—';
   const i = series.length-1;
@@ -463,14 +478,15 @@ function buildAdvice(tf, series, rsiArr, macdObj, pivots, liveInfo, atrArr, rows
   const nowPx = (liveInfo && (Date.now()-liveInfo.timeMs) < 20000 && Number.isFinite(liveInfo.price))
     ? liveInfo.price : lastClose;
 
-  let sig = classifyForAdvice(series, rsiArr, macdObj);
+  const sig = filteredSignal(tf, series, rsiArr, macdObj, atrArr, rows5Ref, rows30Ref);
   const atrV = atrArr?.[i] ?? Math.max(0.3, Math.abs(series[i].high - series[i].low));
   const atrp = atrPct(atrV, nowPx);
-  if (Number.isFinite(atrp) && (atrp < ATR_MIN_PCT || atrp > ATR_MAX_PCT)) sig = 'حيادي';
 
-  if (tf===5 && sig!=='حيادي' && rows5Ref && rows30Ref){
-    const ok = mtfOkIfEnabled(rows5Ref, rows30Ref);
-    if (!ok) sig = 'حيادي';
+  if (sig==='حيادي'){
+    let base = `الإطار: ${tfLabel(tf)} • الإشارة: حيادي. `;
+    if (Number.isFinite(atrp)) base += `ATR%: ${nf2.format(atrp)} ضمن [${ATR_MIN_PCT}–${ATR_MAX_PCT}]؟ `;
+    base += `آخر سعر: ${nf2.format(nowPx)}.`;
+    return base;
   }
 
   let entry = nowPx, sl, tp1, tp2;
@@ -480,17 +496,12 @@ function buildAdvice(tf, series, rsiArr, macdObj, pivots, liveInfo, atrArr, rows
     tp1 = entry + TP1_ATR_MULT*atrV;
     tp2 = entry + TP2_ATR_MULT*atrV;
     if (pivots){ tp1 = Math.max(tp1, pivots.R1 ?? tp1); tp2 = Math.max(tp2, pivots.R2 ?? tp2); }
-  } else if (sig === 'بيع'){
+  } else { // بيع
     entry = Math.min(nowPx, Number.isFinite(emaS)?emaS:nowPx);
     sl  = entry + SL_ATR_MULT*atrV;
     tp1 = entry - TP1_ATR_MULT*atrV;
     tp2 = entry - TP2_ATR_MULT*atrV;
     if (pivots){ tp1 = Math.min(tp1, pivots.S1 ?? tp1); tp2 = Math.min(tp2, pivots.S2 ?? tp2); }
-  } else {
-    let base = `الإطار: ${tfLabel(tf)} • الإشارة: حيادي. `;
-    if (Number.isFinite(atrp)) base += `ATR%: ${nf2.format(atrp)} ضمن [${ATR_MIN_PCT}–${ATR_MAX_PCT}]؟ `;
-    base += `آخر سعر: ${nf2.format(nowPx)}.`;
-    return base;
   }
 
   const ps = calcPositionSize(entry, sl);
@@ -510,17 +521,14 @@ function mergeLiveIntoSeries(series, tfMinutes, live){
   if (!series?.length || !live) return series;
   const ms = tfMinutes*60*1000;
   const bucketStart = Math.floor(live.timeMs / ms) * ms;
-  const out = series.slice();               // copy
-  const last = {...out[out.length-1]};      // clone last candle
-
+  const out = series.slice();
+  const last = {...out[out.length-1]};
   if (bucketStart === last.ts){
-    // تحديث الشمعة الحالية
     last.close = live.price;
     last.high  = Math.max(last.high, live.price);
     last.low   = Math.min(last.low,  live.price);
     out[out.length-1] = last;
   } else if (bucketStart > last.ts){
-    // شمعة جديدة تبدأ بهذا السعر
     out.push({ ts: bucketStart, open:last.close, high:live.price, low:live.price, close:live.price });
   }
   return out;
@@ -572,22 +580,22 @@ async function runAnalysis(){
     }));
     paintTable(tableRows);
 
-    // خطوط الشارت
-    const sNow = classifyFinal({rsiVal:rsiNow, macdNow, macdPrev, macdSig, price:priceNow, emaF:emaFnow, emaS:emaSnow});
-    const aNow = atrArr?.[i] ?? 0;
-    const entryLine = (sNow==='شراء')
+    // — استخدم نفس منطق الإشارة للشارت —
+    const sigNow = filteredSignal(currentTF, merged, rsiArr, macdObj, atrArr, rows5, rows30);
+    const aNow   = atrArr?.[i] ?? 0;
+    const entryLine = (sigNow==='شراء')
       ? Math.max(priceNow, Number.isFinite(emaSnow)?emaSnow:priceNow)
-      : (sNow==='بيع')
+      : (sigNow==='بيع')
         ? Math.min(priceNow, Number.isFinite(emaSnow)?emaSnow:priceNow)
         : null;
     const lines = {
       entry: entryLine,
-      sl : (sNow==='شراء') ? entryLine - SL_ATR_MULT*aNow
-          : (sNow==='بيع') ? entryLine + SL_ATR_MULT*aNow : undefined,
-      tp1: (sNow==='شراء') ? entryLine + TP1_ATR_MULT*aNow
-          : (sNow==='بيع') ? entryLine - TP1_ATR_MULT*aNow : undefined,
-      tp2: (sNow==='شراء') ? entryLine + TP2_ATR_MULT*aNow
-          : (sNow==='بيع') ? entryLine - TP2_ATR_MULT*aNow : undefined,
+      sl : (sigNow==='شراء') ? entryLine - SL_ATR_MULT*aNow
+          : (sigNow==='بيع') ? entryLine + SL_ATR_MULT*aNow : undefined,
+      tp1: (sigNow==='شراء') ? entryLine + TP1_ATR_MULT*aNow
+          : (sigNow==='بيع') ? entryLine - TP1_ATR_MULT*aNow : undefined,
+      tp2: (sigNow==='شراء') ? entryLine + TP2_ATR_MULT*aNow
+          : (sigNow==='بيع') ? entryLine - TP2_ATR_MULT*aNow : undefined,
     };
 
     window.__lastBaseSeries     = baseSeries; // قبل الدمج
@@ -610,7 +618,7 @@ async function runAnalysis(){
 /* إعادة بناء سريعة على كل تكت حي */
 function reprojectWithLive(){
   if (!__cache) return;
-  const {tf, series} = __cache;
+  const {tf, series, rows5, rows30} = __cache;
   if (!LAST_LIVE) return;
 
   const base = window.__lastBaseSeries || series;
@@ -622,23 +630,23 @@ function reprojectWithLive(){
 
   const i = merged.length-1;
   const priceNow = merged[i].close;
-  const ctx = rsiMacdContext(merged, rsiArr, macdObj, i);
-  const sNow = classifyFinal(ctx);
-  const aNow = atrArr?.[i] ?? 0;
   const emaS = macdObj.emaS[i];
-  const entryLine = (sNow==='شراء')
+
+  const sigNow = filteredSignal(tf, merged, rsiArr, macdObj, atrArr, rows5, rows30);
+  const aNow   = atrArr?.[i] ?? 0;
+  const entryLine = (sigNow==='شراء')
       ? Math.max(priceNow, Number.isFinite(emaS)?emaS:priceNow)
-      : (sNow==='بيع')
+      : (sigNow==='بيع')
         ? Math.min(priceNow, Number.isFinite(emaS)?emaS:priceNow)
         : null;
   const lines = {
     entry: entryLine,
-    sl : (sNow==='شراء') ? entryLine - SL_ATR_MULT*aNow
-        : (sNow==='بيع') ? entryLine + SL_ATR_MULT*aNow : undefined,
-    tp1: (sNow==='شراء') ? entryLine + TP1_ATR_MULT*aNow
-        : (sNow==='بيع') ? entryLine - TP1_ATR_MULT*aNow : undefined,
-    tp2: (sNow==='شراء') ? entryLine + TP2_ATR_MULT*aNow
-        : (sNow==='بيع') ? entryLine - TP2_ATR_MULT*aNow : undefined,
+    sl : (sigNow==='شراء') ? entryLine - SL_ATR_MULT*aNow
+        : (sigNow==='بيع') ? entryLine + SL_ATR_MULT*aNow : undefined,
+    tp1: (sigNow==='شراء') ? entryLine + TP1_ATR_MULT*aNow
+        : (sigNow==='بيع') ? entryLine - TP1_ATR_MULT*aNow : undefined,
+    tp2: (sigNow==='شراء') ? entryLine + TP2_ATR_MULT*aNow
+        : (sigNow==='بيع') ? entryLine - TP2_ATR_MULT*aNow : undefined,
   };
 
   window.__lastSeriesForChart = merged;
@@ -646,7 +654,7 @@ function reprojectWithLive(){
   renderTradeChart(merged, lines);
 
   if (elAdviceText){
-    elAdviceText.textContent = buildAdvice(tf, merged, rsiArr, macdObj, __cache.piv, LAST_LIVE, atrArr, __cache.rows5, __cache.rows30);
+    elAdviceText.textContent = buildAdvice(tf, merged, rsiArr, macdObj, __cache.piv, LAST_LIVE, atrArr, rows5, rows30);
   }
 
   checkProximityAlert(lines?.entry);
