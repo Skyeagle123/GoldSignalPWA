@@ -1,4 +1,4 @@
-/* ************ GoldSignals - app.js (MTF + Live-candle Option A + Alerts) ************/
+/* ************ GoldSignals - app.js (with Stochastic + Bollinger, MTF, Alerts) ************/
 const LIVE_JSON_URL    = 'https://goldprice-proxy.samer-mourtada.workers.dev/price';
 const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';
 const TABLE_ROWS       = 80;
@@ -25,6 +25,8 @@ const elIndRSI  = $('indRSI');
 const elIndMACD = $('indMACD');
 const elIndEMAF = $('indEMAF');
 const elIndEMAS = $('indEMAS');
+const elIndStoch= $('indStoch');
+const elIndBB   = $('indBB');
 
 const elPivotP = $('pivotP');
 const elR1 = $('r1'), elR2 = $('r2'), elR3 = $('r3');
@@ -48,6 +50,14 @@ const elAtrMaxPct = $('atrMaxPct');
 /* Position sizing */
 const elAcctSize  = $('acctSize');
 const elRiskPct   = $('riskPct');
+
+/* مؤشرات إضافية */
+const elUseStoch  = $('useStoch');
+const elStochK    = $('stochK');
+const elStochD    = $('stochD');
+const elUseBB     = $('useBB');
+const elBBPeriod  = $('bbPeriod');
+const elBBStd     = $('bbStd');
 
 /* تنبيه الاقتراب */
 const elAlertEnable  = $('alertEnable');
@@ -77,22 +87,39 @@ let RISK_PCT     = parseFloat(elRiskPct?.value  || '1.0');
 let PRO_MODE     = !!elProMode?.checked;
 let MTF_CONFIRM  = !!elMtfConfirm?.checked;
 
-elProMode?.addEventListener('change',()=>{ PRO_MODE = elProMode.checked; runAnalysis(); });
-elMtfConfirm?.addEventListener('change',()=>{ MTF_CONFIRM = elMtfConfirm.checked; runAnalysis(); });
+let USE_STOCH    = !!elUseStoch?.checked;
+let STOCH_K      = parseInt(elStochK?.value || '14', 10);
+let STOCH_D      = parseInt(elStochD?.value || '3', 10);
+let USE_BB       = !!elUseBB?.checked;
+let BB_PERIOD    = parseInt(elBBPeriod?.value || '20', 10);
+let BB_STD       = parseFloat(elBBStd?.value || '2', 10);
 
-elEmaFast?.addEventListener('input', ()=> { EMA_FAST = parseInt(elEmaFast.value||'12',10); runAnalysis(); });
-elEmaSlow?.addEventListener('input', ()=> { EMA_SLOW = parseInt(elEmaSlow.value||'26',10); runAnalysis(); });
-elRsiPeriod?.addEventListener('input',()=> { RSI_PER  = parseInt(elRsiPeriod.value||'14',10); runAnalysis(); });
+/* Events: تحديث الإعدادات */
+function rerun(){ runAnalysis(); }
+elProMode?.addEventListener('change', ()=>{ PRO_MODE = elProMode.checked; rerun(); });
+elMtfConfirm?.addEventListener('change', ()=>{ MTF_CONFIRM = elMtfConfirm.checked; rerun(); });
 
-elAtrPeriod?.addEventListener('input', ()=> { ATR_PERIOD  = Math.max(2, parseInt(elAtrPeriod.value||'14',10)); runAnalysis(); });
-elSlMult?.addEventListener('input',    ()=> { SL_ATR_MULT  = parseFloat(elSlMult.value||'1.5');  updateAdviceOnly(); });
-elTp1Mult?.addEventListener('input',   ()=> { TP1_ATR_MULT = parseFloat(elTp1Mult.value||'1.0'); updateAdviceOnly(); });
-elTp2Mult?.addEventListener('input',   ()=> { TP2_ATR_MULT = parseFloat(elTp2Mult.value||'2.0'); updateAdviceOnly(); });
-elAtrMinPct?.addEventListener('input', ()=> { ATR_MIN_PCT  = parseFloat(elAtrMinPct.value||'0.05'); runAnalysis(); });
-elAtrMaxPct?.addEventListener('input', ()=> { ATR_MAX_PCT  = parseFloat(elAtrMaxPct.value||'0.80'); runAnalysis(); });
+elEmaFast?.addEventListener('input', ()=>{ EMA_FAST = parseInt(elEmaFast.value||'12',10); rerun(); });
+elEmaSlow?.addEventListener('input', ()=>{ EMA_SLOW = parseInt(elEmaSlow.value||'26',10); rerun(); });
+elRsiPeriod?.addEventListener('input',()=>{ RSI_PER  = parseInt(elRsiPeriod.value||'14',10); rerun(); });
 
-elAcctSize?.addEventListener('input',  ()=> { ACCT_SIZE  = parseFloat(elAcctSize.value||'10000'); updateAdviceOnly(); });
-elRiskPct?.addEventListener('input',   ()=> { RISK_PCT   = parseFloat(elRiskPct.value||'1.0');   updateAdviceOnly(); });
+elAtrPeriod?.addEventListener('input', ()=>{ ATR_PERIOD = Math.max(2, parseInt(elAtrPeriod.value||'14',10)); rerun(); });
+elSlMult?.addEventListener('input',    ()=>{ SL_ATR_MULT  = parseFloat(elSlMult.value||'1.5');  updateAdviceOnly(); });
+elTp1Mult?.addEventListener('input',   ()=>{ TP1_ATR_MULT = parseFloat(elTp1Mult.value||'1.0'); updateAdviceOnly(); });
+elTp2Mult?.addEventListener('input',   ()=>{ TP2_ATR_MULT = parseFloat(elTp2Mult.value||'2.0'); updateAdviceOnly(); });
+elAtrMinPct?.addEventListener('input', ()=>{ ATR_MIN_PCT  = parseFloat(elAtrMinPct.value||'0.05'); rerun(); });
+elAtrMaxPct?.addEventListener('input', ()=>{ ATR_MAX_PCT  = parseFloat(elAtrMaxPct.value||'0.80'); rerun(); });
+
+elAcctSize?.addEventListener('input',  ()=>{ ACCT_SIZE  = parseFloat(elAcctSize.value||'10000'); updateAdviceOnly(); });
+elRiskPct?.addEventListener('input',   ()=>{ RISK_PCT   = parseFloat(elRiskPct.value||'1.0');   updateAdviceOnly(); });
+
+elUseStoch?.addEventListener('change', ()=>{ USE_STOCH = elUseStoch.checked; rerun(); });
+elStochK?.addEventListener('input',    ()=>{ STOCH_K   = parseInt(elStochK.value||'14',10);      rerun(); });
+elStochD?.addEventListener('input',    ()=>{ STOCH_D   = parseInt(elStochD.value||'3',10);       rerun(); });
+
+elUseBB?.addEventListener('change',    ()=>{ USE_BB    = elUseBB.checked; rerun(); });
+elBBPeriod?.addEventListener('input',  ()=>{ BB_PERIOD = parseInt(elBBPeriod.value||'20',10);    rerun(); });
+elBBStd?.addEventListener('input',     ()=>{ BB_STD    = parseFloat(elBBStd.value||'2');         rerun(); });
 
 /* تنسيق أرقام ووقت محلي */
 const nf2 = new Intl.NumberFormat('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -190,6 +217,17 @@ function ema(series, period){
   }
   return out;
 }
+function sma(series, period){
+  const out = new Array(series.length).fill(null);
+  if (series.length < period) return out;
+  let sum = 0;
+  for (let i=0;i<series.length;i++){
+    sum += series[i].close;
+    if (i>=period) sum -= series[i-period].close;
+    if (i>=period-1) out[i] = sum/period;
+  }
+  return out;
+}
 function rsi(series, period=14){
   const out = new Array(series.length).fill(null);
   if (series.length <= period) return out;
@@ -243,8 +281,49 @@ function atr(series, period=14){
   }
   return out;
 }
+/* Stochastic (%K/%D) */
+function stochastic(series, kPeriod=14, dPeriod=3){
+  const k = new Array(series.length).fill(null);
+  const d = new Array(series.length).fill(null);
+  for (let i=0;i<series.length;i++){
+    if (i < kPeriod-1) continue;
+    let hh=-Infinity, ll=Infinity;
+    for (let j=i-kPeriod+1;j<=i;j++){
+      hh = Math.max(hh, series[j].high);
+      ll = Math.min(ll, series[j].low);
+    }
+    const c = series[i].close;
+    const denom = (hh-ll);
+    k[i] = (denom===0) ? 50 : ((c-ll)/(hh-ll))*100;
+    // %D = SMA لك على dPeriod
+    let sum=0, cnt=0;
+    for (let j=i-dPeriod+1;j<=i;j++){
+      if (j>=0 && Number.isFinite(k[j])){ sum+=k[j]; cnt++; }
+    }
+    d[i] = (cnt>0) ? sum/cnt : null;
+  }
+  return {k,d};
+}
+/* Bollinger Bands */
+function bollinger(series, period=20, stdMult=2){
+  const mid = sma(series, period);
+  const up = new Array(series.length).fill(null);
+  const dn = new Array(series.length).fill(null);
+  for (let i=0;i<series.length;i++){
+    if (i<period-1 || !Number.isFinite(mid[i])) continue;
+    let s2=0;
+    for (let j=i-period+1;j<=i;j++){
+      const diff = series[j].close - mid[i];
+      s2 += diff*diff;
+    }
+    const sd = Math.sqrt(s2/period);
+    up[i] = mid[i] + stdMult*sd;
+    dn[i] = mid[i] - stdMult*sd;
+  }
+  return {mid, up, dn};
+}
 
-/* تصنيف */
+/* تصنيف أساس/دقيق */
 function classifyBase(rsiVal, macdVal){
   if (macdVal==null || rsiVal==null) return 'حيادي';
   if (macdVal>0 && rsiVal>=50 && rsiVal<=70) return 'شراء';
@@ -276,11 +355,15 @@ function paintLive(price, ts){
   if (elLivePrice && Number.isFinite(price)) elLivePrice.textContent = nf2.format(price);
   if (elLiveTime  && ts)                    elLiveTime.textContent  = fmtLocalDateTime(ts);
 }
-function paintIndicators(rsiVal, macdVal, emaFv, emaSv){
+function paintIndicators(rsiVal, macdVal, emaFv, emaSv, stK, stD, bbMid, bbUp, bbDn){
   if (elIndRSI)  elIndRSI.textContent  = Number.isFinite(rsiVal)  ? nf2.format(rsiVal)  : '—';
   if (elIndMACD) elIndMACD.textContent = Number.isFinite(macdVal) ? nf4.format(macdVal) : '—';
   if (elIndEMAF) elIndEMAF.textContent = Number.isFinite(emaFv)   ? nf2.format(emaFv)   : '—';
   if (elIndEMAS) elIndEMAS.textContent = Number.isFinite(emaSv)   ? nf2.format(emaSv)   : '—';
+  if (elIndStoch) elIndStoch.textContent = (Number.isFinite(stK)||Number.isFinite(stD)) ? `${Number.isFinite(stK)?nf2.format(stK):'—'} / ${Number.isFinite(stD)?nf2.format(stD):'—'}` : '—';
+  if (elIndBB) elIndBB.textContent = (Number.isFinite(bbMid)||Number.isFinite(bbUp)||Number.isFinite(bbDn))
+    ? `${Number.isFinite(bbMid)?nf2.format(bbMid):'—'} / ${Number.isFinite(bbUp)?nf2.format(bbUp):'—'} / ${Number.isFinite(bbDn)?nf2.format(bbDn):'—'}`
+    : '—';
 }
 function paintSummary(rsiVal, macdVal, extras){
   if (!elSummaryText) return;
@@ -426,28 +509,25 @@ function rsiMacdContext(series, rsiArr, macdObj, i){
 }
 function atrPct(atrVal, price){ return (Number.isFinite(atrVal) && Number.isFinite(price) && price>0) ? (100*atrVal/price) : NaN; }
 
-// ——— دالة لضمان أن entry لا يساوي السعر الحي تمامًا ———
+// ——— دالة لضمان أن entry لا يساوي السعر الحي ———
 function adjustEntry(entry, priceNow, atrV, side){
   if (!Number.isFinite(entry) || !Number.isFinite(priceNow) || !Number.isFinite(atrV)) return entry;
-  const EPS = 0.01; // فارق صغير بالدولار
+  const EPS = 0.01;
   if (Math.abs(entry - priceNow) < EPS){
     const bump = 0.2 * atrV;
     return (side === 'شراء') ? priceNow + bump : priceNow - bump;
   }
   return entry;
 }
-
-function mtfOkIfEnabled(rows5, rows30, idx30, signal){
+function mtfOkIfEnabled(rows5, rows30){
   if (!MTF_CONFIRM) return true;
   if (!rows30?.length) return true;
   const emaF30 = ema(rows30, EMA_FAST);
   const emaS30 = ema(rows30, EMA_SLOW);
-  const j = (idx30!=null)? idx30 : (rows30.length-1);
+  const j = rows30.length-1;
   const f = emaF30[j], s = emaS30[j];
   if (!Number.isFinite(f) || !Number.isFinite(s)) return true;
-  if (signal === 'شراء') return f > s;
-  if (signal === 'بيع')  return f < s;
-  return true;
+  return f>s || f<s; // بس تأكيد الاتجاه
 }
 
 /* Position Size */
@@ -455,12 +535,40 @@ function calcPositionSize(entry, sl){
   const riskAmt = ACCT_SIZE * (RISK_PCT/100);
   const dist    = Math.abs(entry - sl);
   if (!Number.isFinite(riskAmt) || !Number.isFinite(dist) || dist<=0) return null;
-  const units   = riskAmt / dist;
-  return { riskAmt, units };
+  return { riskAmt, units: riskAmt / dist };
 }
 
-/* ——— توحيد منطق الإشارة للشارت والنصيحة ——— */
-function filteredSignal(tf, series, rsiArr, macdObj, atrArr, rows5Ref, rows30Ref){
+/* ——— منطق الإشارة + مُرشّحات Stoch/BB ——— */
+function applyExtraFilters(signal, series, i, stoch, bb){
+  if (signal==='حيادي') return 'حيادي';
+  const price = series[i].close;
+
+  if (USE_STOCH && stoch){
+    const k = stoch.k[i], d = stoch.d[i];
+    if (signal==='شراء'){
+      // تأكيد: %K > %D ومش فوق 80
+      if (!(Number.isFinite(k)&&Number.isFinite(d) && k>d && k<80)) return 'حيادي';
+    }else if (signal==='بيع'){
+      // تأكيد: %K < %D ومش تحت 20
+      if (!(Number.isFinite(k)&&Number.isFinite(d) && k<d && k>20)) return 'حيادي';
+    }
+  }
+
+  if (USE_BB && bb){
+    const mid=bb.mid[i], up=bb.up[i], dn=bb.dn[i];
+    if (signal==='شراء'){
+      // سعر فوق الوسط وليس قريب من العلوي جداً
+      if (!(Number.isFinite(mid)&&Number.isFinite(up) && price>mid && price<up)) return 'حيادي';
+    }else if (signal==='بيع'){
+      // سعر تحت الوسط وليس قريب من السفلي جداً
+      if (!(Number.isFinite(mid)&&Number.isFinite(dn) && price<mid && price>dn)) return 'حيادي';
+    }
+  }
+  return signal;
+}
+
+/* يُنتج الإشارة النهائية */
+function filteredSignal(tf, series, rsiArr, macdObj, atrArr, rows5Ref, rows30Ref, stochObj, bbObj){
   const i = series.length-1;
   const ctx = rsiMacdContext(series, rsiArr, macdObj, i);
   let sig = classifyFinal(ctx);
@@ -476,11 +584,14 @@ function filteredSignal(tf, series, rsiArr, macdObj, atrArr, rows5Ref, rows30Ref
     const ok = mtfOkIfEnabled(rows5Ref, rows30Ref);
     if (!ok) sig = 'حيادي';
   }
+
+  // مُرشّحات إضافية
+  sig = applyExtraFilters(sig, series, i, stochObj, bbObj);
   return sig;
 }
 
 /* نصيحة مكتوبة */
-function buildAdvice(tf, series, rsiArr, macdObj, pivots, liveInfo, atrArr, rows5Ref, rows30Ref){
+function buildAdvice(tf, series, rsiArr, macdObj, pivots, liveInfo, atrArr, rows5Ref, rows30Ref, stochObj, bbObj){
   if (!series?.length) return '—';
   const i = series.length-1;
   const emaS   = macdObj.emaS[i];
@@ -489,7 +600,7 @@ function buildAdvice(tf, series, rsiArr, macdObj, pivots, liveInfo, atrArr, rows
   const nowPx = (liveInfo && (Date.now()-liveInfo.timeMs) < 20000 && Number.isFinite(liveInfo.price))
     ? liveInfo.price : lastClose;
 
-  const sig = filteredSignal(tf, series, rsiArr, macdObj, atrArr, rows5Ref, rows30Ref);
+  const sig = filteredSignal(tf, series, rsiArr, macdObj, atrArr, rows5Ref, rows30Ref, stochObj, bbObj);
   const atrV = atrArr?.[i] ?? Math.max(0.3, Math.abs(series[i].high - series[i].low));
   const atrp = atrPct(atrV, nowPx);
 
@@ -529,7 +640,7 @@ let LAST_LIVE = null;
 let __cache = null;
 let __alertLockUntil = 0;
 
-/* دمج التكت الحي داخل شمعة الإطار الحالي (Option A) */
+/* دمج التكت الحي داخل شمعة الإطار الحالي */
 function mergeLiveIntoSeries(series, tfMinutes, live){
   if (!series?.length || !live) return series;
   const ms = tfMinutes*60*1000;
@@ -563,25 +674,29 @@ async function runAnalysis(){
     if (currentTF===60)   baseSeries = rows60;
     if (currentTF===1440) baseSeries = rowsDay;
 
-    // ادمج التكت الحي فورًا لعرض شموع لحظية
+    // دمج السعر الحي على الشمعة الحالية
     const merged = (LAST_LIVE) ? mergeLiveIntoSeries(baseSeries, currentTF, LAST_LIVE) : baseSeries;
 
-    // مؤشرات
+    // مؤشرات أساسية
     const rsiArr  = rsi(merged, RSI_PER);
     const macdObj = macd(merged, EMA_FAST, EMA_SLOW, 9);
     const atrArr  = atr(merged, ATR_PERIOD);
 
+    // مؤشرات إضافية
+    const stochObj = USE_STOCH ? stochastic(merged, STOCH_K, STOCH_D) : null;
+    const bbObj    = USE_BB ? bollinger(merged, BB_PERIOD, BB_STD) : null;
+
     const i = merged.length-1;
     const priceNow = merged[i].close;
-    const rsiNow   = rsiArr[i];
-    const macdNow  = macdObj.macd[i];
-    const macdPrev = macdObj.macd[i-1];
-    const macdSig  = macdObj.signal[i];
-    const emaFnow  = macdObj.emaF[i];
-    const emaSnow  = macdObj.emaS[i];
 
-    paintSummary(rsiNow, macdNow, {macdPrev, macdSig, price:priceNow, emaF:emaFnow, emaS:emaSnow});
-    paintIndicators(rsiNow, macdNow, emaFnow, emaSnow);
+    paintSummary(rsiArr[i], macdObj.macd[i], {
+      macdPrev: macdObj.macd[i-1], macdSig: macdObj.signal[i], price:priceNow, emaF:macdObj.emaF[i], emaS:macdObj.emaS[i]
+    });
+    paintIndicators(
+      rsiArr[i], macdObj.macd[i], macdObj.emaF[i], macdObj.emaS[i],
+      stochObj?.k[i], stochObj?.d[i],
+      bbObj?.mid[i], bbObj?.up[i], bbObj?.dn[i]
+    );
 
     const piv = calcPivots(rowsDay);
     paintPivots(piv);
@@ -593,13 +708,14 @@ async function runAnalysis(){
     }));
     paintTable(tableRows);
 
-    // — استخدم نفس منطق الإشارة للشارت —
-    const sigNow = filteredSignal(currentTF, merged, rsiArr, macdObj, atrArr, rows5, rows30);
+    // الإشارة وخطوط الرسم
+    const sigNow = filteredSignal(currentTF, merged, rsiArr, macdObj, atrArr, rows5, rows30, stochObj, bbObj);
     const aNow   = atrArr?.[i] ?? 0;
+    const emaS   = macdObj.emaS[i];
     let entryLine = (sigNow==='شراء')
-      ? Math.max(priceNow, Number.isFinite(emaSnow)?emaSnow:priceNow)
+      ? Math.max(priceNow, Number.isFinite(emaS)?emaS:priceNow)
       : (sigNow==='بيع')
-        ? Math.min(priceNow, Number.isFinite(emaSnow)?emaSnow:priceNow)
+        ? Math.min(priceNow, Number.isFinite(emaS)?emaS:priceNow)
         : null;
     entryLine = adjustEntry(entryLine, priceNow, aNow, (sigNow==='شراء'?'شراء':(sigNow==='بيع'?'بيع':null)));
     const lines = {
@@ -612,41 +728,42 @@ async function runAnalysis(){
           : (sigNow==='بيع') ? entryLine - TP2_ATR_MULT*aNow : undefined,
     };
 
-    window.__lastBaseSeries     = baseSeries; // قبل الدمج
-    window.__lastSeriesForChart = merged;     // بعد الدمج
+    window.__lastBaseSeries     = baseSeries;
+    window.__lastSeriesForChart = merged;
     window.__lastLinesForChart  = lines;
     renderTradeChart(merged, lines);
 
     if (elAdviceText){
-      elAdviceText.textContent = buildAdvice(currentTF, merged, rsiArr, macdObj, piv, LAST_LIVE, atrArr, rows5, rows30);
+      elAdviceText.textContent = buildAdvice(currentTF, merged, rsiArr, macdObj, piv, LAST_LIVE, atrArr, rows5, rows30, stochObj, bbObj);
     }
-    __cache = {tf: currentTF, series: merged, rsiArr, macdObj, piv, atrArr, rows5, rows30};
+    __cache = {tf: currentTF, series: merged, rsiArr, macdObj, piv, atrArr, rows5, rows30, stochObj, bbObj};
 
-    checkProximityAlert(lines?.entry); // فحص التنبيه
+    checkProximityAlert(lines?.entry);
   }catch(err){
     alert(`تعذّر تحميل/تحليل البيانات: ${err.message||err}`);
     console.error(err);
   }
 }
 
-/* إعادة بناء سريعة على كل تكت حي */
+/* إعادة إسقاط سريع مع التكت الحي */
 function reprojectWithLive(){
-  if (!__cache) return;
-  const {tf, series, rows5, rows30} = __cache;
-  if (!LAST_LIVE) return;
+  if (!__cache || !LAST_LIVE) return;
+  const {tf, rows5, rows30} = __cache;
 
-  const base = window.__lastBaseSeries || series;
+  const base = window.__lastBaseSeries || __cache.series;
   const merged = mergeLiveIntoSeries(base, tf, LAST_LIVE);
 
   const rsiArr  = rsi(merged, RSI_PER);
   const macdObj = macd(merged, EMA_FAST, EMA_SLOW, 9);
   const atrArr  = atr(merged, ATR_PERIOD);
+  const stochObj= USE_STOCH ? stochastic(merged, STOCH_K, STOCH_D) : null;
+  const bbObj   = USE_BB ? bollinger(merged, BB_PERIOD, BB_STD) : null;
 
   const i = merged.length-1;
   const priceNow = merged[i].close;
   const emaS = macdObj.emaS[i];
 
-  const sigNow = filteredSignal(tf, merged, rsiArr, macdObj, atrArr, rows5, rows30);
+  const sigNow = filteredSignal(tf, merged, rsiArr, macdObj, atrArr, rows5, rows30, stochObj, bbObj);
   const aNow   = atrArr?.[i] ?? 0;
   let entryLine = (sigNow==='شراء')
       ? Math.max(priceNow, Number.isFinite(emaS)?emaS:priceNow)
@@ -669,13 +786,13 @@ function reprojectWithLive(){
   renderTradeChart(merged, lines);
 
   if (elAdviceText){
-    elAdviceText.textContent = buildAdvice(tf, merged, rsiArr, macdObj, __cache.piv, LAST_LIVE, atrArr, rows5, rows30);
+    elAdviceText.textContent = buildAdvice(tf, merged, rsiArr, macdObj, __cache.piv, LAST_LIVE, atrArr, rows5, rows30, stochObj, bbObj);
   }
 
   checkProximityAlert(lines?.entry);
 }
 
-/* تحديث النصيحة فقط (عند تغيير أرقام ATR/مخاطرة) */
+/* تحديث النصيحة فقط */
 function updateAdviceOnly(){
   if (!__cache) return;
   reprojectWithLive();
@@ -696,7 +813,7 @@ function checkProximityAlert(entry){
   const thr  = Math.max(0, parseFloat(elAlertDist?.value||'0.5'));
   const now  = Date.now();
   if (dist <= thr && now > __alertLockUntil){
-    __alertLockUntil = now + 15000; // قفل 15 ث
+    __alertLockUntil = now + 15000;
     beep();
     if (elLivePrice){ elLivePrice.style.transition='color .15s'; elLivePrice.style.color='#67e8f9'; setTimeout(()=>{ elLivePrice.style.color='#ffffff'; }, 400); }
   }
@@ -714,7 +831,7 @@ async function refreshLive(){
       window.__livePrice   = j.price;
       window.__liveTimeMs  = t;
       LAST_LIVE            = {price:j.price, timeMs:t};
-      reprojectWithLive(); // أعِد الإسقاط على الشارت والـ Entry/SL/TP
+      reprojectWithLive();
     }
   }catch(e){ console.warn('Live error:', e); }
 }
