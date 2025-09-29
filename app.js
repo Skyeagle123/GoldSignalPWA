@@ -243,32 +243,7 @@ function atr(series, period=14){
   }
   return out;
 }
-// إضافة متغيرات المؤشرات الجديدة
-const elStochK = document.getElementById('stochK');
-const elStochD = document.getElementById('stochD');
-const elBBPeriod = document.getElementById('bbPeriod');
 
-// إضافة دوال لحساب Stochastic و Bollinger Bands
-// (تضيف هنا دوال لحساب هذه المؤشرات)
-
-// تعديل دالة runAnalysis لتشمل حساب المؤشرات الإضافية
-function runAnalysis() {
-  // ... الكود الحالي ...
-
-  // احصل على قيم الفترات من الحقول
-  const stochK = parseInt(elStochK.value, 10);
-  const stochD = parseInt(elStochD.value, 10);
-  const bbPeriod = parseInt(elBBPeriod.value, 10);
-
-  // حساب المؤشرات الإضافية (Stochastic و BB)
-  const stochValues = calculateStochastic(merged, stochK, stochD);
-  const bbValues = calculateBollingerBands(merged, bbPeriod);
-
-  // دمج القيم مع التحليل الحالي ...
-  // مثلاً: استخدام الـ Stochastic والـ BB لتأكيد الإشارات
-
-  // ... بقية التحليل ...
-}
 /* تصنيف */
 function classifyBase(rsiVal, macdVal){
   if (macdVal==null || rsiVal==null) return 'حيادي';
