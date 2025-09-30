@@ -7,7 +7,8 @@
   <meta name="color-scheme" content="dark">
   <style>
     :root{--bg:#0b1220;--card:#0f172a;--muted:#9ca3af;--text:#e5e7eb;--accent:#38bdf8;--good:#10b981;--bad:#ef4444;--warn:#f59e0b;}
-    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans",Ubuntu,"Droid Sans";background:var(--bg);color:var(--text)}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans",Ubuntu,"Droid Sans";background:var(--bg);color:var(--text)}
     header{position:sticky;top:0;z-index:10;background:rgba(11,18,32,.85);backdrop-filter:blur(6px);border-bottom:1px solid #1f2937}
     .wrap{max-width:1100px;margin:0 auto;padding:16px}
     h1{margin:10px 0;font-size:20px}
@@ -42,7 +43,7 @@
 
 <main class="wrap">
 
-  <!-- مصادر CSV + اختيار الإطارات -->
+  <!-- إعدادات البيانات -->
   <div class="card">
     <h3>إعدادات البيانات</h3>
     <div class="grid">
@@ -70,7 +71,7 @@
     </div>
   </div>
 
-  <!-- السعر الحي + ملخص -->
+  <!-- السعر الحي + ملخص + مؤشرات -->
   <div class="card">
     <div class="grid">
       <div>
@@ -103,7 +104,7 @@
     <div class="hint">• الأزرق = دخول • الأخضر = TP1/TP2 • الأحمر = SL • الأبيض = السعر الحي (Live).</div>
   </div>
 
-  <!-- إعدادات إضافية: مؤشرات/ATR/نِسَب -->
+  <!-- الإعدادات الفنية -->
   <div class="card">
     <h3>الإعدادات الفنية</h3>
     <div class="grid">
@@ -164,18 +165,18 @@
       <div>
         <label>مسافة الاقتراب (بالدولار)</label>
         <input id="alertDistance" type="number" step="0.1" value="0.5">
-        <div class="hint">يُصفر عندما يقترب السعر الحي من نقطة الدخول. (تلقائيًا نأخذ الأكبر بينها وبين 0.25×ATR).</div>
+        <div class="hint">نأخذ تلقائيًا الأكبر بين القيمة هنا و 0.25×ATR.</div>
       </div>
     </div>
   </div>
 
-  <!-- نصيحة دخول/خروج -->
+  <!-- نصيحة -->
   <div class="card">
     <h3>نصيحة الدخول/الخروج</h3>
     <div id="adviceText">—</div>
   </div>
 
-  <!-- البيانات الأخيرة -->
+  <!-- جدول البيانات الأخيرة -->
   <div class="card">
     <h3>البيانات الأخيرة</h3>
     <div style="overflow:auto">
@@ -190,7 +191,7 @@
     </div>
   </div>
 
-  <!-- ======= Backtest (احترافي) ======= -->
+  <!-- Backtest احترافي -->
   <div class="card">
     <h3>اختبار الاستراتيجية (Backtest)</h3>
     <div class="grid">
@@ -221,12 +222,8 @@
       </div>
     </div>
     <div class="row" style="margin-top:10px;gap:20px;flex-wrap:wrap">
-      <div style="min-width:260px">
-        <div id="btStats" class="muted">—</div>
-      </div>
-      <div style="flex:1;min-width:260px">
-        <canvas id="btEquity" style="width:100%;height:200px"></canvas>
-      </div>
+      <div style="min-width:260px"><div id="btStats" class="muted">—</div></div>
+      <div style="flex:1;min-width:260px"><canvas id="btEquity" style="width:100%;height:200px"></canvas></div>
     </div>
     <div style="overflow:auto;margin-top:10px">
       <table>
@@ -239,6 +236,6 @@
 </main>
 
 <!-- سكربت التطبيق -->
-<script src="app.js?v=10"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>
