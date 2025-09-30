@@ -308,7 +308,7 @@ function atr(series, period=14){
   }
   return out;
 }
-/* Stochastic (%K/%D) */
+/* Stochastic */
 function stochastic(series, kPeriod=14, dPeriod=3){
   const k = new Array(series.length).fill(null);
   const d = new Array(series.length).fill(null);
@@ -322,7 +322,6 @@ function stochastic(series, kPeriod=14, dPeriod=3){
     const c = series[i].close;
     const denom = (hh-ll);
     k[i] = (denom===0) ? 50 : ((c-ll)/(hh-ll))*100;
-    // %D = SMA لك على dPeriod
     let sum=0, cnt=0;
     for (let j=i-dPeriod+1;j<=i;j++){
       if (j>=0 && Number.isFinite(k[j])){ sum+=k[j]; cnt++; }
@@ -331,7 +330,7 @@ function stochastic(series, kPeriod=14, dPeriod=3){
   }
   return {k,d};
 }
-/* Bollinger Bands */
+/* Bollinger */
 function bollinger(series, period=20, stdMult=2){
   const mid = sma(series, period);
   const up = new Array(series.length).fill(null);
@@ -411,7 +410,6 @@ function mtfOkIfEnabled(rows5, rows30){
   const j = rows30.length-1;
   const f = emaF30[j], s = emaS30[j];
   if (!Number.isFinite(f) || !Number.isFinite(s)) return true;
-  // نتأكد فقط إن في اتجاه واضح (فوق/تحت) — بدون تعقيد إضافي
   return f>s || f<s;
 }
 
@@ -428,6 +426,150 @@ function rsiMacdContext(series, rsiArr, macdObj, i){
   };
 }
 function atrPct(atrVal, price){ return (Number.isFinite(atrVal) && Number.isFinite(price) && price>0) ? (100*atrVal/price) : NaN; }
+
+/* ===== عرض: ملخص الإشارة ===== */
+function paintSummary(rsiVal, macdVal, extras){
+  if (!elSummaryText) return;
+  const s = classifyFinal({
+    rsiVal,
+    macdNow: macdVal,
+    macdPrev: extras?.macdPrev,
+    macdSig:  extras?.macdSig,
+    price:    extras?.price,
+    emaF:     extras?.emaF,
+    emaS:     extras?.emaS,
+  });
+  elSummaryText.textContent = s + (PRO_MODE ? ' (دقيق)' : '');
+  elSummaryText.style.color = (s==='شراء') ? '#10b981' : (s==='بيع') ? '#ef4444' : '#f59e0b';
+}
+
+/* ===== جداول/رسم ===== */
+function paintLive(price, ts){
+  if (elLivePrice && Number.isFinite(price)) elLivePrice.textContent = nf2.format(price);
+  if (elLiveTime  && ts)                    elLiveTime.textContent  = fmtLocalDateTime(ts);
+}
+function paintIndicators(rsiVal, macdVal, emaFv, emaSv, stK, stD, bbMid, bbUp, bbDn){
+  if (elIndRSI)  elIndRSI.textContent  = Number.isFinite(rsiVal)  ? nf2.format(rsiVal)  : '—';
+  if (elIndMACD) elIndMACD.textContent = Number.isFinite(macdVal) ? nf4.format(macdVal) : '—';
+  if (elIndEMAF) elIndEMAF.textContent = Number.isFinite(emaFv)   ? nf2.format(emaFv)   : '—';
+  if (elIndEMAS) elIndEMAS.textContent = Number.isFinite(emaSv)   ? nf2.format(emaSv)   : '—';
+  if (elIndStoch) elIndStoch.textContent = (Number.isFinite(stK)||Number.isFinite(stD)) ? `${Number.isFinite(stK)?nf2.format(stK):'—'} / ${Number.isFinite(stD)?nf2.format(stD):'—'}` : '—';
+  if (elIndBB) elIndBB.textContent = (Number.isFinite(bbMid)||Number.isFinite(bbUp)||Number.isFinite(bbDn))
+    ? `${Number.isFinite(bbMid)?nf2.format(bbMid):'—'} / ${Number.isFinite(bbUp)?nf2.format(bbUp):'—'} / ${Number.isFinite(bbDn)?nf2.format(bbDn):'—'}`
+    : '—';
+}
+function paintPivots(p){
+  if (!p) return;
+  elPivotP&&(elPivotP.textContent=nf2.format(p.P));
+  elR1&&(elR1.textContent=nf2.format(p.R1));
+  elR2&&(elR2.textContent=nf2.format(p.R2));
+  elR3&&(elR3.textContent=nf2.format(p.R3));
+  elS1&&(elS1.textContent=nf2.format(p.S1));
+  elS2&&(elS2.textContent=nf2.format(p.S2));
+  elS3&&(elS3.textContent=nf2.format(p.S3));
+}
+function paintTable(rows){
+  if (!elRowsBody) return;
+  elRowsBody.innerHTML='';
+  const last = rows.slice(-TABLE_ROWS).reverse();
+  for (const r of last){
+    const s = classifyBase(r.rsi, r.macd);
+    const color = s==='شراء'?'#10b981':s==='بيع'?'#ef4444':'#f59e0b';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.date}</td>
+      <td>${r.time}</td>
+      <td>${nf2.format(r.price)}</td>
+      <td style="color:${color};font-weight:600">${s}</td>
+      <td>${Number.isFinite(r.rsi)?nf2.format(r.rsi):'—'}</td>
+      <td>${Number.isFinite(r.macd)?nf4.format(r.macd):'—'}</td>
+      <td>${nf2.format(r.emaF)}</td>
+    `;
+    elRowsBody.appendChild(tr);
+  }
+}
+function makeHiDPICanvas(canvas){
+  const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = Math.round(rect.width  * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return ctx;
+}
+function renderTradeChart(series, lines){
+  const canvas = document.getElementById('tradeChart');
+  if (!canvas || !series || !series.length) return;
+
+  const ctx = makeHiDPICanvas(canvas);
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+
+  ctx.fillStyle = '#0b1220'; ctx.fillRect(0,0,W,H);
+
+  const MAX_CANDLES = 120;
+  const data = series.slice(-MAX_CANDLES);
+
+  let minY = Math.min(...data.map(d=>d.low));
+  let maxY = Math.max(...data.map(d=>d.high));
+  const add = v => { if (Number.isFinite(v)){ minY = Math.min(minY, v); maxY = Math.max(maxY, v); } };
+  add(lines?.entry); add(lines?.sl); add(lines?.tp1); add(lines?.tp2); add(window.__livePrice);
+
+  if (minY === maxY){ minY-=1; maxY+=1; }
+  const pad = (maxY-minY)*0.08; minY-=pad; maxY+=pad;
+
+  const x0=46, x1=W-12, y0=16, y1=H-24;
+  const plotW=x1-x0, plotH=y1-y0;
+
+  const xAt = i => x0 + (i/(data.length-1))*plotW;
+  const yAt = v => y1 - ((v-minY)/(maxY-minY))*plotH;
+
+  ctx.strokeStyle='#223047'; ctx.lineWidth=1;
+  ctx.font='12px system-ui'; ctx.fillStyle='#9ca3af'; ctx.textAlign='right'; ctx.textBaseline='middle';
+  const gridN=4;
+  for(let g=0; g<=gridN; g++){
+    const yVal=minY+(g/gridN)*(maxY-minY);
+    const y=Math.round(yAt(yVal))+0.5;
+    ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(x1,y); ctx.stroke();
+    ctx.fillText(nf2.format(yVal),x0-6,y);
+  }
+
+  const cw=Math.max(2, plotW/Math.max(30,data.length)*0.7);
+  for(let i=0;i<data.length;i++){
+    const d=data[i];
+    const x=xAt(i);
+    const yH=yAt(d.high), yL=yAt(d.low), yO=yAt(d.open), yC=yAt(d.close);
+    const bull=d.close>=d.open;
+    ctx.strokeStyle=bull?'#16a34a':'#ef4444';
+    ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.moveTo(x,yH); ctx.lineTo(x,yL); ctx.stroke();
+    const xL=x-cw/2, xR=x+cw/2;
+    ctx.beginPath(); ctx.moveTo(xL,yO); ctx.lineTo(xR,yO); ctx.lineTo(xR,yC); ctx.lineTo(xL,yC); ctx.closePath();
+    ctx.fillStyle=bull?'#16a34a':'#ef4444'; ctx.globalAlpha=0.85; ctx.fill(); ctx.globalAlpha=1; ctx.stroke();
+  }
+
+  function drawHLine(val,color,label){
+    if(!Number.isFinite(val)) return;
+    const y=Math.round(yAt(val))+0.5;
+    ctx.save();
+    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.setLineDash([6,5]);
+    ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(x1,y); ctx.stroke();
+    ctx.setLineDash([]);
+    const tag=`${label}: ${nf2.format(val)}`;
+    const tw=ctx.measureText(tag).width+10, th=18, bx=x0+8, by=y-th-6;
+    ctx.fillStyle='#0b1220'; ctx.strokeStyle=color; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.roundRect?.(bx,by,tw,th,6); if(!ctx.roundRect){ ctx.rect(bx,by,tw,th); }
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle=color; ctx.font='12px system-ui'; ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.fillText(tag,bx+6,by+th/2);
+    ctx.restore();
+  }
+
+  drawHLine(lines?.entry,'#60a5fa','Entry');
+  drawHLine(lines?.tp1,'#22c55e','TP1');
+  drawHLine(lines?.tp2,'#22c55e','TP2');
+  drawHLine(lines?.sl ,'#f87171','SL');
+  if (Number.isFinite(window.__livePrice)) drawHLine(window.__livePrice,'#ffffff','Live');
+}
 
 /* ——— دالة لضمان أن entry لا يساوي السعر الحي ——— */
 function adjustEntry(entry, priceNow, atrV, side){
@@ -555,15 +697,12 @@ async function runAnalysis(){
     if (currentTF===60)   baseSeries = rows60;
     if (currentTF===1440) baseSeries = rowsDayNY; // اليوم على NY
 
-    // دمج السعر الحي على الشمعة الحالية
     const merged = (LAST_LIVE) ? mergeLiveIntoSeries(baseSeries, currentTF, LAST_LIVE) : baseSeries;
 
-    // مؤشرات
     const rsiArr  = rsi(merged, RSI_PER);
     const macdObj = macd(merged, EMA_FAST, EMA_SLOW, 9);
     const atrArr  = atr(merged, ATR_PERIOD);
 
-    // مؤشرات إضافية
     const stochObj = USE_STOCH ? stochastic(merged, STOCH_K, STOCH_D) : null;
     const bbObj    = USE_BB ? bollinger(merged, BB_PERIOD, BB_STD) : null;
 
@@ -578,57 +717,16 @@ async function runAnalysis(){
       stochObj?.k[i], stochObj?.d[i],
       bbObj?.mid[i], bbObj?.up[i], bbObj?.dn[i]
     );
-// ===== عرض: ملخص الإشارة =====
-function paintSummary(rsiVal, macdVal, extras){
-  if (!elSummaryText) return;
 
-  // تحديد الإشارة النهائية باستعمال نفس المنطق المستعمل بالنصيحة
-  const s = classifyFinal({
-    rsiVal,
-    macdNow: macdVal,
-    macdPrev: extras?.macdPrev,
-    macdSig:  extras?.macdSig,
-    price:    extras?.price,
-    emaF:     extras?.emaF,
-    emaS:     extras?.emaS,
-  });
-
-  elSummaryText.textContent = s + (PRO_MODE ? ' (دقيق)' : '');
-  elSummaryText.style.color = 
-    (s==='شراء') ? '#10b981' :
-    (s==='بيع')  ? '#ef4444' :
-                    '#f59e0b';
-}
-    // Pivot على NY
     const piv = calcPivotsFromDailyNY(rowsDayNY);
     paintPivots(piv);
-// ===== عرض: ملخص الإشارة =====
-function paintSummary(rsiVal, macdVal, extras){
-  // extras: { macdPrev, macdSig, price, emaF, emaS }
-  if (!elSummaryText) return;
 
-  // مصنّف الإشارة النهائي نفسه المستعمل بالنصيحة
-  const s = classifyFinal({
-    rsiVal,
-    macdNow: (extras&&extras.macdPrev!=null&&extras.macdSig!=null) ? (macdVal) : macdVal,
-    macdPrev: extras?.macdPrev,
-    macdSig:  extras?.macdSig,
-    price:    extras?.price,
-    emaF:     extras?.emaF,
-    emaS:     extras?.emaS,
-  });
-
-  elSummaryText.textContent = s + (PRO_MODE ? ' (دقيق)' : '');
-  elSummaryText.style.color = (s==='شراء') ? '#10b981' : (s==='بيع') ? '#ef4444' : '#f59e0b';
-}
-    // جدول
     const tableRows = merged.map((p,idx)=>({
       ts:p.ts, date: toLocalDate(p.ts), time: toLocalTime(p.ts),
       price:p.close, rsi:rsiArr[idx], macd:macdObj.macd[idx], emaF:macdObj.emaF[idx]
     }));
     paintTable(tableRows);
 
-    // الإشارة وخطوط الرسم
     const sigNow = filteredSignal(currentTF, merged, rsiArr, macdObj, atrArr, rows5, rows30, stochObj, bbObj);
     const aNow   = atrArr?.[i] ?? 0;
     const emaS   = macdObj.emaS[i];
@@ -668,7 +766,7 @@ function paintSummary(rsiVal, macdVal, extras){
 /* إعادة إسقاط سريع مع التكت الحي */
 function reprojectWithLive(){
   if (!__cache || !LAST_LIVE) return;
-  const {tf, rows5, rows30, stochObj, bbObj} = __cache;
+  const {tf, rows5, rows30} = __cache;
 
   const base = window.__lastBaseSeries || __cache.series;
   const merged = mergeLiveIntoSeries(base, tf, LAST_LIVE);
