@@ -464,7 +464,7 @@ async function refreshLive(){ try{
   paintLive(price,t); window.__livePrice=price; window.__liveTimeMs=t; LAST_LIVE={price,timeMs:t}; reprojectWithLive();
 }catch(e){ console.warn('Live error:',e); } }
 
-/* ---------------- Backtest Pro (مع Fallback للريبو) ---------------- */
+/* ---------------- Backtest Pro (مع Fallback للريبو/الرابط) ---------------- */
 function makeHiDPICanvas(c){const dpr=Math.max(1,Math.min(window.devicePixelRatio||1,3)), r=c.getBoundingClientRect(); c.width=Math.round(r.width*dpr); c.height=Math.round(r.height*dpr); const ctx=c.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); return ctx;}
 function drawEquity(canvas, eq){
   if(!canvas||!eq?.length) return; const ctx=makeHiDPICanvas(canvas), W=canvas.clientWidth, H=canvas.clientHeight;
@@ -535,7 +535,7 @@ function summarizeTrades(trades){
   return {n, winRate, avgR, pf, dd, pnl, sharpe};
 }
 
-/* === التعديل المطلوب: Fallback لملف الريبو أو رابط الحقل العلوي === */
+/* === Backtest مع Fallback على ملف الريبو أو رابط الحقل العلوي === */
 async function runBacktest(){
   try{
     loadSettings();
