@@ -578,7 +578,27 @@ async function runAnalysis(){
       stochObj?.k[i], stochObj?.d[i],
       bbObj?.mid[i], bbObj?.up[i], bbObj?.dn[i]
     );
+// ===== عرض: ملخص الإشارة =====
+function paintSummary(rsiVal, macdVal, extras){
+  if (!elSummaryText) return;
 
+  // تحديد الإشارة النهائية باستعمال نفس المنطق المستعمل بالنصيحة
+  const s = classifyFinal({
+    rsiVal,
+    macdNow: macdVal,
+    macdPrev: extras?.macdPrev,
+    macdSig:  extras?.macdSig,
+    price:    extras?.price,
+    emaF:     extras?.emaF,
+    emaS:     extras?.emaS,
+  });
+
+  elSummaryText.textContent = s + (PRO_MODE ? ' (دقيق)' : '');
+  elSummaryText.style.color = 
+    (s==='شراء') ? '#10b981' :
+    (s==='بيع')  ? '#ef4444' :
+                    '#f59e0b';
+}
     // Pivot على NY
     const piv = calcPivotsFromDailyNY(rowsDayNY);
     paintPivots(piv);
