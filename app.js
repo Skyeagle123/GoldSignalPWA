@@ -1,4 +1,4 @@
-/* ************ GoldSignals - app.js (with Stochastic + Bollinger, MTF, Alerts) ************/
+/* ************ GoldSignals - app.js (Pivot على يوم نيويورك + كل الفلاتر) ************/
 
 const LIVE_JSON_URL    = 'https://goldprice-proxy.samer-mourtada.workers.dev/price';
 const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';
@@ -148,11 +148,11 @@ function tfLabel(tf){
   if (tf===5) return '5 دقائق';
   if (tf===30) return '30 دقيقة';
   if (tf===60) return 'ساعة';
-  if (tf===1440) return 'يوم';
+  if (tf===1440) return 'يوم (NY)';
   return tf+'m';
 }
 
-/* CSV */
+/* ===== CSV & تجميع الإطارات ===== */
 function parseCsv(text){
   const lines = text.trim().split(/\r?\n/);
   if (!lines.length) return [];
@@ -206,7 +206,33 @@ function aggregateOHLC(rows, minutes){
   return [...map.values()].sort((a,b)=>a.ts-b.ts);
 }
 
-/* مؤشرات */
+/* --- تجميع يوم نيويورك --- */
+const dtfNY = new Intl.DateTimeFormat('en-CA', { timeZone:'America/New_York', year:'numeric', month:'2-digit', day:'2-digit' });
+function nyDateKey(ts){
+  const parts = dtfNY.formatToParts(new Date(ts));
+  const y = parts.find(p=>p.type==='year').value;
+  const m = parts.find(p=>p.type==='month').value;
+  const d = parts.find(p=>p.type==='day').value;
+  return `${y}-${m}-${d}`; // YYYY-MM-DD (NY)
+}
+function aggregateDailyNY(rows5){
+  const map = new Map(); // key = 'YYYY-MM-DD' (NY)
+  for (const r of rows5){
+    const key = nyDateKey(r.ts);
+    let rec = map.get(key);
+    if (!rec){
+      rec = { key, ts:r.ts, open:r.open, high:r.high, low:r.low, close:r.close };
+      map.set(key, rec);
+    }else{
+      rec.high = Math.max(rec.high, r.high);
+      rec.low  = Math.min(rec.low,  r.low);
+      rec.close= r.close;
+    }
+  }
+  return [...map.values()].sort((a,b)=> a.key.localeCompare(b.key) );
+}
+
+/* ===== مؤشرات فنية ===== */
 function ema(series, period){
   const out = new Array(series.length).fill(null);
   const k = 2/(period+1);
@@ -324,7 +350,7 @@ function bollinger(series, period=20, stdMult=2){
   return {mid, up, dn};
 }
 
-/* تصنيف أساس/دقيق */
+/* ===== تصنيف الإشارات ===== */
 function classifyBase(rsiVal, macdVal){
   if (macdVal==null || rsiVal==null) return 'حيادي';
   if (macdVal>0 && rsiVal>=50 && rsiVal<=70) return 'شراء';
@@ -341,205 +367,17 @@ function classifyPrecise({rsiVal, macdNow, macdPrev, macdSig, price, emaF, emaS}
 }
 function classifyFinal(ctx){ return PRO_MODE ? classifyPrecise(ctx) : classifyBase(ctx.rsiVal, ctx.macdNow); }
 
-/* Pivot */
-function calcPivots(daily){
-  if (!daily || daily.length<2) return null;
-  const y = daily[daily.length-2];
+/* ===== Pivot من يوم نيويورك ===== */
+function calcPivotsFromDailyNY(dailyNY){
+  if (!dailyNY || dailyNY.length<2) return null;
+  const y = dailyNY[dailyNY.length-2]; // أمس (NY)
   const H=y.high, L=y.low, C=y.close;
   if (![H,L,C].every(Number.isFinite)) return null;
   const P=(H+L+C)/3, R1=2*P-L, S1=2*P-H, R2=P+(H-L), S2=P-(H-L), R3=H+2*(P-L), S3=L-2*(H-P);
   return {P,R1,R2,R3,S1,S2,S3};
 }
 
-/* عرض */
-function paintLive(price, ts){
-  if (elLivePrice && Number.isFinite(price)) elLivePrice.textContent = nf2.format(price);
-  if (elLiveTime  && ts)                    elLiveTime.textContent  = fmtLocalDateTime(ts);
-}
-function paintIndicators(rsiVal, macdVal, emaFv, emaSv, stK, stD, bbMid, bbUp, bbDn){
-  if (elIndRSI)  elIndRSI.textContent  = Number.isFinite(rsiVal)  ? nf2.format(rsiVal)  : '—';
-  if (elIndMACD) elIndMACD.textContent = Number.isFinite(macdVal) ? nf4.format(macdVal) : '—';
-  if (elIndEMAF) elIndEMAF.textContent = Number.isFinite(emaFv)   ? nf2.format(emaFv)   : '—';
-  if (elIndEMAS) elIndEMAS.textContent = Number.isFinite(emaSv)   ? nf2.format(emaSv)   : '—';
-  if (elIndStoch) elIndStoch.textContent = (Number.isFinite(stK)||Number.isFinite(stD)) ? `${Number.isFinite(stK)?nf2.format(stK):'—'} / ${Number.isFinite(stD)?nf2.format(stD):'—'}` : '—';
-  if (elIndBB) elIndBB.textContent = (Number.isFinite(bbMid)||Number.isFinite(bbUp)||Number.isFinite(bbDn))
-    ? `${Number.isFinite(bbMid)?nf2.format(bbMid):'—'} / ${Number.isFinite(bbUp)?nf2.format(bbUp):'—'} / ${Number.isFinite(bbDn)?nf2.format(bbDn):'—'}`
-    : '—';
-}
-function paintSummary(rsiVal, macdVal, extras){
-  if (!elSummaryText) return;
-  const s = classifyFinal({rsiVal, macdNow:extras?.macdNow, macdPrev:extras?.macdPrev, macdSig:extras?.macdSig, price:extras?.price, emaF:extras?.emaF, emaS:extras?.emaS});
-  elSummaryText.textContent = s + (PRO_MODE?' (دقيق)':'');
-  elSummaryText.style.color = s==='شراء' ? '#10b981' : s==='بيع' ? '#ef4444' : '#f59e0b';
-}
-function paintPivots(p){
-  if (!p) return;
-  elPivotP&&(elPivotP.textContent=nf2.format(p.P));
-  elR1&&(elR1.textContent=nf2.format(p.R1));
-  elR2&&(elR2.textContent=nf2.format(p.R2));
-  elR3&&(elR3.textContent=nf2.format(p.R3));
-  elS1&&(elS1.textContent=nf2.format(p.S1));
-  elS2&&(elS2.textContent=nf2.format(p.S2));
-  elS3&&(elS3.textContent=nf2.format(p.S3));
-}
-function paintTable(rows){
-  if (!elRowsBody) return;
-  elRowsBody.innerHTML='';
-  const last = rows.slice(-TABLE_ROWS).reverse();
-  for (const r of last){
-    const s = classifyBase(r.rsi, r.macd);
-    const color = s==='شراء'?'#10b981':s==='بيع'?'#ef4444':'#f59e0b';
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${r.date}</td>
-      <td>${r.time}</td>
-      <td>${nf2.format(r.price)}</td>
-      <td style="color:${color};font-weight:600">${s}</td>
-      <td>${Number.isFinite(r.rsi)?nf2.format(r.rsi):'—'}</td>
-      <td>${Number.isFinite(r.macd)?nf4.format(r.macd):'—'}</td>
-      <td>${nf2.format(r.emaF)}</td>
-    `;
-    elRowsBody.appendChild(tr);
-  }
-}
-
-/* شارت (كانفاس عالي الدقة) */
-function makeHiDPICanvas(canvas){
-  const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
-  const rect = canvas.getBoundingClientRect();
-  canvas.width  = Math.round(rect.width  * dpr);
-  canvas.height = Math.round(rect.height * dpr);
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  return ctx;
-}
-function renderTradeChart(series, lines){
-  const canvas = document.getElementById('tradeChart');
-  if (!canvas || !series || !series.length) return;
-
-  const ctx = makeHiDPICanvas(canvas);
-  const W = canvas.clientWidth, H = canvas.clientHeight;
-
-  ctx.fillStyle = '#0b1220'; ctx.fillRect(0,0,W,H);
-
-  const MAX_CANDLES = 120;
-  const data = series.slice(-MAX_CANDLES);
-
-  let minY = Math.min(...data.map(d=>d.low));
-  let maxY = Math.max(...data.map(d=>d.high));
-  const add = v => { if (Number.isFinite(v)){ minY = Math.min(minY, v); maxY = Math.max(maxY, v); } };
-  add(lines?.entry); add(lines?.sl); add(lines?.tp1); add(lines?.tp2); add(window.__livePrice);
-
-  if (minY === maxY){ minY-=1; maxY+=1; }
-  const pad = (maxY-minY)*0.08; minY-=pad; maxY+=pad;
-
-  const x0=46, x1=W-12, y0=16, y1=H-24;
-  const plotW=x1-x0, plotH=y1-y0;
-
-  const xAt = i => x0 + (i/(data.length-1))*plotW;
-  const yAt = v => y1 - ((v-minY)/(maxY-minY))*plotH;
-
-  // grid + scale
-  ctx.strokeStyle='#223047'; ctx.lineWidth=1;
-  ctx.font='12px system-ui'; ctx.fillStyle='#9ca3af'; ctx.textAlign='right'; ctx.textBaseline='middle';
-  const gridN=4;
-  for(let g=0; g<=gridN; g++){
-    const yVal=minY+(g/gridN)*(maxY-minY);
-    const y=Math.round(yAt(yVal))+0.5;
-    ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(x1,y); ctx.stroke();
-    ctx.fillText(nf2.format(yVal),x0-6,y);
-  }
-
-  // candles
-  const cw=Math.max(2, plotW/Math.max(30,data.length)*0.7);
-  for(let i=0;i<data.length;i++){
-    const d=data[i];
-    const x=xAt(i);
-    const yH=yAt(d.high), yL=yAt(d.low), yO=yAt(d.open), yC=yAt(d.close);
-    const bull=d.close>=d.open;
-    ctx.strokeStyle=bull?'#16a34a':'#ef4444';
-    ctx.lineWidth=1.2;
-    // wick
-    ctx.beginPath(); ctx.moveTo(x,yH); ctx.lineTo(x,yL); ctx.stroke();
-    // body
-    const xL=x-cw/2, xR=x+cw/2;
-    ctx.beginPath(); ctx.moveTo(xL,yO); ctx.lineTo(xR,yO); ctx.lineTo(xR,yC); ctx.lineTo(xL,yC); ctx.closePath();
-    ctx.fillStyle=bull?'#16a34a':'#ef4444'; ctx.globalAlpha=0.85; ctx.fill(); ctx.globalAlpha=1; ctx.stroke();
-  }
-
-  function drawHLine(val,color,label){
-    if(!Number.isFinite(val)) return;
-    const y=Math.round(yAt(val))+0.5;
-    ctx.save();
-    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.setLineDash([6,5]);
-    ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(x1,y); ctx.stroke();
-    ctx.setLineDash([]);
-    const tag=`${label}: ${nf2.format(val)}`;
-    const tw=ctx.measureText(tag).width+10, th=18, bx=x0+8, by=y-th-6;
-    ctx.fillStyle='#0b1220'; ctx.strokeStyle=color; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.roundRect?.(bx,by,tw,th,6); if(!ctx.roundRect){ ctx.rect(bx,by,tw,th); }
-    ctx.fill(); ctx.stroke();
-    ctx.fillStyle=color; ctx.font='12px system-ui'; ctx.textAlign='left'; ctx.textBaseline='middle';
-    ctx.fillText(tag,bx+6,by+th/2);
-    ctx.restore();
-  }
-
-  // خطوط الدخول/الأهداف/الستوب
-  drawHLine(lines?.entry,'#60a5fa','Entry');
-  drawHLine(lines?.tp1,'#22c55e','TP1');
-  drawHLine(lines?.tp2,'#22c55e','TP2');
-  drawHLine(lines?.sl ,'#f87171','SL');
-
-  // خط السعر الحي — أبيض
-  if (Number.isFinite(window.__livePrice)) {
-    drawHLine(window.__livePrice,'#ffffff','Live');
-  }
-}
-
-/* مساعدات */
-function rsiMacdContext(series, rsiArr, macdObj, i){
-  return {
-    rsiVal: rsiArr[i],
-    macdNow: macdObj.macd[i],
-    macdPrev: macdObj.macd[i-1],
-    macdSig: macdObj.signal[i],
-    price: series[i].close,
-    emaF: macdObj.emaF[i],
-    emaS: macdObj.emaS[i],
-  };
-}
-function atrPct(atrVal, price){ return (Number.isFinite(atrVal) && Number.isFinite(price) && price>0) ? (100*atrVal/price) : NaN; }
-
-// ——— دالة لضمان أن entry لا يساوي السعر الحي ———
-function adjustEntry(entry, priceNow, atrV, side){
-  if (!Number.isFinite(entry) || !Number.isFinite(priceNow) || !Number.isFinite(atrV)) return entry;
-  const EPS = 0.01;
-  if (Math.abs(entry - priceNow) < EPS){
-    const bump = 0.2 * atrV;
-    return (side === 'شراء') ? priceNow + bump : priceNow - bump;
-  }
-  return entry;
-}
-function mtfOkIfEnabled(rows5, rows30){
-  if (!MTF_CONFIRM) return true;
-  if (!rows30?.length) return true;
-  const emaF30 = ema(rows30, EMA_FAST);
-  const emaS30 = ema(rows30, EMA_SLOW);
-  const j = rows30.length-1;
-  const f = emaF30[j], s = emaS30[j];
-  if (!Number.isFinite(f) || !Number.isFinite(s)) return true;
-  return f>s || f<s; // تأكيد اتجاه
-}
-
-/* Position Size */
-function calcPositionSize(entry, sl){
-  const riskAmt = ACCT_SIZE * (RISK_PCT/100);
-  const dist    = Math.abs(entry - sl);
-  if (!Number.isFinite(riskAmt) || !Number.isFinite(dist) || dist<=0) return null;
-  return { riskAmt, units: riskAmt / dist };
-}
-
-/* ——— منطق الإشارة + مُرشّحات Stoch/BB ——— */
+/* ===== مُرشّحات إضافية ===== */
 function applyExtraFilters(signal, series, i, stoch, bb){
   if (signal==='حيادي') return 'حيادي';
   const price = series[i].close;
@@ -564,25 +402,76 @@ function applyExtraFilters(signal, series, i, stoch, bb){
   return signal;
 }
 
+/* ===== تأكيد متعدّد الأطر (MTF) لإشارات 5 دقائق ===== */
+function mtfOkIfEnabled(rows5, rows30){
+  if (!MTF_CONFIRM) return true;
+  if (!rows30?.length) return true;
+  const emaF30 = ema(rows30, EMA_FAST);
+  const emaS30 = ema(rows30, EMA_SLOW);
+  const j = rows30.length-1;
+  const f = emaF30[j], s = emaS30[j];
+  if (!Number.isFinite(f) || !Number.isFinite(s)) return true;
+  // نتأكد فقط إن في اتجاه واضح (فوق/تحت) — بدون تعقيد إضافي
+  return f>s || f<s;
+}
+
+/* ===== مساعدات ===== */
+function rsiMacdContext(series, rsiArr, macdObj, i){
+  return {
+    rsiVal: rsiArr[i],
+    macdNow: macdObj.macd[i],
+    macdPrev: macdObj.macd[i-1],
+    macdSig: macdObj.signal[i],
+    price: series[i].close,
+    emaF: macdObj.emaF[i],
+    emaS: macdObj.emaS[i],
+  };
+}
+function atrPct(atrVal, price){ return (Number.isFinite(atrVal) && Number.isFinite(price) && price>0) ? (100*atrVal/price) : NaN; }
+
+/* ——— دالة لضمان أن entry لا يساوي السعر الحي ——— */
+function adjustEntry(entry, priceNow, atrV, side){
+  if (!Number.isFinite(entry) || !Number.isFinite(priceNow) || !Number.isFinite(atrV)) return entry;
+  const EPS = 0.01;
+  if (Math.abs(entry - priceNow) < EPS){
+    const bump = 0.2 * atrV;
+    return (side === 'شراء') ? priceNow + bump : priceNow - bump;
+  }
+  return entry;
+}
+
+/* Position Size */
+function calcPositionSize(entry, sl){
+  const riskAmt = ACCT_SIZE * (RISK_PCT/100);
+  const dist    = Math.abs(entry - sl);
+  if (!Number.isFinite(riskAmt) || !Number.isFinite(dist) || dist<=0) return null;
+  return { riskAmt, units: riskAmt / dist };
+}
+
+/* ===== مُجمِّع الإشارة النهائي ===== */
 function filteredSignal(tf, series, rsiArr, macdObj, atrArr, rows5Ref, rows30Ref, stochObj, bbObj){
   const i = series.length-1;
   const ctx = rsiMacdContext(series, rsiArr, macdObj, i);
   let sig = classifyFinal(ctx);
 
+  // ATR Regime
   const nowPx = series[i].close;
   const atrv  = atrArr?.[i];
   const apct  = atrPct(atrv, nowPx);
   if (Number.isFinite(apct) && (apct < ATR_MIN_PCT || apct > ATR_MAX_PCT)) sig = 'حيادي';
 
+  // MTF confirm لإطار 5 دقائق
   if (tf===5 && sig!=='حيادي' && rows5Ref && rows30Ref){
     const ok = mtfOkIfEnabled(rows5Ref, rows30Ref);
     if (!ok) sig = 'حيادي';
   }
 
+  // مُرشّحات إضافية
   sig = applyExtraFilters(sig, series, i, stochObj, bbObj);
   return sig;
 }
 
+/* ===== نصيحة مكتوبة ===== */
 function buildAdvice(tf, series, rsiArr, macdObj, pivots, liveInfo, atrArr, rows5Ref, rows30Ref, stochObj, bbObj){
   if (!series?.length) return '—';
   const i = series.length-1;
@@ -611,7 +500,7 @@ function buildAdvice(tf, series, rsiArr, macdObj, pivots, liveInfo, atrArr, rows
     tp1 = entry + TP1_ATR_MULT*atrV;
     tp2 = entry + TP2_ATR_MULT*atrV;
     if (pivots){ tp1 = Math.max(tp1, pivots.R1 ?? tp1); tp2 = Math.max(tp2, pivots.R2 ?? tp2); }
-  } else {
+  } else { // بيع
     entry = Math.min(nowPx, Number.isFinite(emaS)?emaS:nowPx);
     entry = adjustEntry(entry, nowPx, atrV, 'بيع');
     sl  = entry + SL_ATR_MULT*atrV;
@@ -659,19 +548,22 @@ async function runAnalysis(){
 
     const rows30   = aggregateOHLC(rows5, 30);
     const rows60   = aggregateOHLC(rows5, 60);
-    const rowsDay  = aggregateOHLC(rows5, 1440);
+    const rowsDayNY= aggregateDailyNY(rows5); // يوم نيويورك
 
     let baseSeries = rows5;
     if (currentTF===30)   baseSeries = rows30;
     if (currentTF===60)   baseSeries = rows60;
-    if (currentTF===1440) baseSeries = rowsDay;
+    if (currentTF===1440) baseSeries = rowsDayNY; // اليوم على NY
 
+    // دمج السعر الحي على الشمعة الحالية
     const merged = (LAST_LIVE) ? mergeLiveIntoSeries(baseSeries, currentTF, LAST_LIVE) : baseSeries;
 
+    // مؤشرات
     const rsiArr  = rsi(merged, RSI_PER);
     const macdObj = macd(merged, EMA_FAST, EMA_SLOW, 9);
     const atrArr  = atr(merged, ATR_PERIOD);
 
+    // مؤشرات إضافية
     const stochObj = USE_STOCH ? stochastic(merged, STOCH_K, STOCH_D) : null;
     const bbObj    = USE_BB ? bollinger(merged, BB_PERIOD, BB_STD) : null;
 
@@ -687,15 +579,18 @@ async function runAnalysis(){
       bbObj?.mid[i], bbObj?.up[i], bbObj?.dn[i]
     );
 
-    const piv = calcPivots(rowsDay);
+    // Pivot على NY
+    const piv = calcPivotsFromDailyNY(rowsDayNY);
     paintPivots(piv);
 
+    // جدول
     const tableRows = merged.map((p,idx)=>({
       ts:p.ts, date: toLocalDate(p.ts), time: toLocalTime(p.ts),
       price:p.close, rsi:rsiArr[idx], macd:macdObj.macd[idx], emaF:macdObj.emaF[idx]
     }));
     paintTable(tableRows);
 
+    // الإشارة وخطوط الرسم
     const sigNow = filteredSignal(currentTF, merged, rsiArr, macdObj, atrArr, rows5, rows30, stochObj, bbObj);
     const aNow   = atrArr?.[i] ?? 0;
     const emaS   = macdObj.emaS[i];
@@ -723,7 +618,7 @@ async function runAnalysis(){
     if (elAdviceText){
       elAdviceText.textContent = buildAdvice(currentTF, merged, rsiArr, macdObj, piv, LAST_LIVE, atrArr, rows5, rows30, stochObj, bbObj);
     }
-    __cache = {tf: currentTF, series: merged, rsiArr, macdObj, piv, atrArr, rows5, rows30, stochObj, bbObj};
+    __cache = {tf: currentTF, series: merged, rsiArr, macdObj, piv, atrArr, rows5, rows30, stochObj, bbObj, rowsDayNY};
 
     checkProximityAlert(lines?.entry);
   }catch(err){
@@ -735,7 +630,7 @@ async function runAnalysis(){
 /* إعادة إسقاط سريع مع التكت الحي */
 function reprojectWithLive(){
   if (!__cache || !LAST_LIVE) return;
-  const {tf, rows5, rows30} = __cache;
+  const {tf, rows5, rows30, stochObj, bbObj} = __cache;
 
   const base = window.__lastBaseSeries || __cache.series;
   const merged = mergeLiveIntoSeries(base, tf, LAST_LIVE);
@@ -743,14 +638,14 @@ function reprojectWithLive(){
   const rsiArr  = rsi(merged, RSI_PER);
   const macdObj = macd(merged, EMA_FAST, EMA_SLOW, 9);
   const atrArr  = atr(merged, ATR_PERIOD);
-  const stochObj= USE_STOCH ? stochastic(merged, STOCH_K, STOCH_D) : null;
-  const bbObj   = USE_BB ? bollinger(merged, BB_PERIOD, BB_STD) : null;
+  const stoch2  = USE_STOCH ? stochastic(merged, STOCH_K, STOCH_D) : null;
+  const bb2     = USE_BB ? bollinger(merged, BB_PERIOD, BB_STD) : null;
 
   const i = merged.length-1;
   const priceNow = merged[i].close;
   const emaS = macdObj.emaS[i];
 
-  const sigNow = filteredSignal(tf, merged, rsiArr, macdObj, atrArr, rows5, rows30, stochObj, bbObj);
+  const sigNow = filteredSignal(tf, merged, rsiArr, macdObj, atrArr, rows5, rows30, stoch2, bb2);
   const aNow   = atrArr?.[i] ?? 0;
   let entryLine = (sigNow==='شراء')
       ? Math.max(priceNow, Number.isFinite(emaS)?emaS:priceNow)
@@ -771,7 +666,7 @@ function reprojectWithLive(){
   renderTradeChart(merged, lines);
 
   if (elAdviceText){
-    elAdviceText.textContent = buildAdvice(tf, merged, rsiArr, macdObj, __cache.piv, LAST_LIVE, atrArr, rows5, rows30, stochObj, bbObj);
+    elAdviceText.textContent = buildAdvice(tf, merged, rsiArr, macdObj, __cache.piv, LAST_LIVE, atrArr, rows5, rows30, stoch2, bb2);
   }
 
   checkProximityAlert(lines?.entry);
