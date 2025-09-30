@@ -582,7 +582,25 @@ async function runAnalysis(){
     // Pivot على NY
     const piv = calcPivotsFromDailyNY(rowsDayNY);
     paintPivots(piv);
+// ===== عرض: ملخص الإشارة =====
+function paintSummary(rsiVal, macdVal, extras){
+  // extras: { macdPrev, macdSig, price, emaF, emaS }
+  if (!elSummaryText) return;
 
+  // مصنّف الإشارة النهائي نفسه المستعمل بالنصيحة
+  const s = classifyFinal({
+    rsiVal,
+    macdNow: (extras&&extras.macdPrev!=null&&extras.macdSig!=null) ? (macdVal) : macdVal,
+    macdPrev: extras?.macdPrev,
+    macdSig:  extras?.macdSig,
+    price:    extras?.price,
+    emaF:     extras?.emaF,
+    emaS:     extras?.emaS,
+  });
+
+  elSummaryText.textContent = s + (PRO_MODE ? ' (دقيق)' : '');
+  elSummaryText.style.color = (s==='شراء') ? '#10b981' : (s==='بيع') ? '#ef4444' : '#f59e0b';
+}
     // جدول
     const tableRows = merged.map((p,idx)=>({
       ts:p.ts, date: toLocalDate(p.ts), time: toLocalTime(p.ts),
