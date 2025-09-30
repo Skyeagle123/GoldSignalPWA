@@ -259,20 +259,29 @@ ATR%: ${Number.isFinite(atrp)?nf2.format(atrp):'—'} ضمن [${ATR_MIN_PCT}–$
   return base+`آخر سعر: ${nf2.format(nowPx)}.`;
 }
 
-/* رسم */
-function paintLive(price,ts){ if(elLivePrice&&Number.isFinite(price)) elLivePrice.textContent=nf2.format(price);
-  if(elLiveTime&&ts) elLiveTime.textContent=fmtLocalDateTime(ts); }
-function paintIndicators(rsiVal,macdVal,emaFv,emaSv,stK,stD,bbMid,bbUp,bbDn){
-  if(elIndRSI)  elIndRSI.textContent  = Number.isFinite(rsiVal)?nf2.format(rsiVal):'—';
-  if(elIndMACD) elIndMACD.textContent = Number.isFinite(macdVal)?nf4.format(macdVal):'—';
-  if(elIndEMAF) elIndEMAF.textContent = Number.isFinite(emaFv)?nf2.format(emaFv):'—';
-  if(elIndEMAS) elIndEMAS.textContent = Number.isFinite(emaSv)?nf2.format(emaSv):'—';
-  if(elIndStoch) elIndStoch.textContent=(Number.isFinite(stK)||Number.isFinite(stD))?`${Number.isFinite(stK)?nf2.format(stK):'—'} / ${Number.isFinite(stD)?nf2.format(stD):'—'}`:'—';
-  if(elIndBB) elIndBB.textContent=(Number.isFinite(bbMid)||Number.isFinite(bbUp)||Number.isFinite(bbDn))?`${Number.isFinite(bbMid)?nf2.format(bbMid):'—'} / ${Number.isFinite(bbUp)?nf2.format(bbUp):'—'} / ${Number.isFinite(bbDn)?nf2.format(bbDn):'—'}`:'—';
+/* رسم جدول آخر القراءات */
+function paintTable(rows){
+  if (!elRowsBody || !Array.isArray(rows)) return;
+  elRowsBody.innerHTML = '';
+  const last = rows.slice(-TABLE_ROWS).reverse(); // آخر N صف
+  for (const r of last){
+    const s = classifyBase(r.rsi, r.macd);
+    const color = (s==='شراء') ? '#10b981' : (s==='بيع') ? '#ef4444' : '#f59e0b';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.date}</td>
+      <td>${r.time}</td>
+      <td>${Number.isFinite(r.price) ? nf2.format(r.price) : '—'}</td>
+      <td style="color:${color};font-weight:600">${s}</td>
+      <td>${Number.isFinite(r.rsi) ? nf2.format(r.rsi) : '—'}</td>
+      <td>${Number.isFinite(r.macd) ? nf4.format(r.macd) : '—'}</td>
+      <td>${Number.isFinite(r.emaF) ? nf2.format(r.emaF) : '—'}</td>
+    `;
+    elRowsBody.appendChild(tr);
+  }
 }
-function paintPivots(p){ if(!p) return; elPivotP&&(elPivotP.textContent=nf2.format(p.P));
-  elR1&&(elR1.textContent=nf2.format(p.R1)); elR2&&(elR2.textContent=nf2.format(p.R2)); elR3&&(elR3.textContent=nf2.format(p.R3));
-  elS1&&(elS1.textContent=nf2.format(p.S1)); elS2&&(elS2.textContent=nf2.format(p.S2)); elS3&&(elS3.textContent=nf2.format(p.S3)); }
+
+/* رسم الشارت */
 function makeHiDPICanvas(c){const dpr=Math.max(1,Math.min(window.devicePixelRatio||1,3)), r=c.getBoundingClientRect(); c.width=Math.round(r.width*dpr); c.height=Math.round(r.height*dpr); const ctx=c.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); return ctx;}
 function renderTradeChart(series,lines){
   const canvas=document.getElementById('tradeChart'); if(!canvas||!series?.length) return;
