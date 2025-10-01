@@ -29,9 +29,17 @@
     .pill.active{background:#1e293b}
     .kpi{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
     .kpi .box{background:#0b1220;border:1px dashed #334155;border-radius:10px;padding:10px;text-align:center}
-    canvas{width:100%;height:320px;background:#0b1220;border:1px dashed #334155;border-radius:10px}
+    canvas{width:100%;height:360px;background:#0b1220;border:1px dashed #334155;border-radius:10px}
     .grid2{display:grid;grid-template-columns:1.2fr .8fr;gap:12px}
     @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+
+    /* جديد: كروت KPI أفقية ونصيحة تحت الشارت */
+    .kpi-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    @media(max-width:760px){.kpi-row{grid-template-columns:1fr}}
+    .kpi-card{background:#0b1220;border:1px solid #334155;border-radius:12px;padding:12px;text-align:center}
+    .kpi-title{color:#94a3b8;font-size:12px}
+    .kpi-value{font-family:ui-monospace,monospace;font-size:20px;margin-top:6px}
+    .advice-box{margin-top:10px;background:#0b1220;border:1px dashed #334155;color:#e5e7eb;border-radius:10px;padding:10px}
   </style>
 </head>
 <body>
@@ -84,44 +92,38 @@
       </div>
     </div>
 
-    <!-- السعر الحي + الملخص -->
+    <!-- السعر الحي + Pivot + نصيحة -->
     <div class="card">
-      <div class="row">
-        <div class="col">
-          <label>السعر الحي</label>
-          <div class="kpi">
-            <div class="box">
-              <div class="muted">السعر</div>
-              <div id="livePrice" class="mono" style="font-size:18px">—</div>
-            </div>
-            <div class="box">
-              <div class="muted">التوقيت</div>
-              <div id="liveTime" class="mono">—</div>
-            </div>
-            <div class="box">
-              <div class="muted">Pivot (NY)</div>
-              <div class="mono">P: <span id="pivotP">—</span></div>
-            </div>
-          </div>
+      <label>السعر الحي</label>
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-title">السعر</div>
+          <div id="livePrice" class="kpi-value">—</div>
         </div>
-        <div class="col">
-          <label>الملخّص</label>
-          <div id="summaryText" class="mono">—</div>
-          <div class="row" style="margin-top:8px">
-            <div class="col small">
-              <div class="mono muted">R1: <span id="r1">—</span> • R2: <span id="r2">—</span> • R3: <span id="r3">—</span></div>
-              <div class="mono muted">S1: <span id="s1">—</span> • S2: <span id="s2">—</span> • S3: <span id="s3">—</span></div>
-            </div>
-          </div>
+        <div class="kpi-card">
+          <div class="kpi-title">التوقيت</div>
+          <div id="liveTime" class="kpi-value">—</div>
         </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Pivot (NY)</div>
+          <div class="kpi-value">P: <span id="pivotP">—</span></div>
+        </div>
+      </div>
+      <div class="advice-box" id="adviceBox">—</div>
+      <div class="mono muted" style="margin-top:8px">
+        R1: <span id="r1">—</span> • R2: <span id="r2">—</span> • R3: <span id="r3">—</span> •
+        S1: <span id="s1">—</span> • S2: <span id="s2">—</span> • S3: <span id="s3">—</span>
       </div>
     </div>
 
     <!-- الرسم + المؤشرات -->
     <div class="grid2">
       <div class="card">
-        <label>الرسم البياني (الأبيض = السعر الحي • الأزرق = دخول • الأخضر = TP • الأحمر = SL)</label>
+        <label>الرسم البياني (شمعات) • الأبيض = السعر الحي • الأزرق = دخول • الأخضر = TP • الأحمر = SL</label>
         <canvas id="chart"></canvas>
+
+        <!-- نصيحة تحت الشارت مباشرة (مكرر لسهولة الملاحظة – يحدّث الإثنان معًا) -->
+        <div class="advice-box" id="adviceBox2" style="margin-top:12px">—</div>
       </div>
 
       <div class="card">
@@ -129,9 +131,11 @@
         <table>
           <tbody>
             <tr><td>RSI</td><td class="mono" id="indRSI">—</td></tr>
-            <tr><td>MACD</td><td class="mono" id="indMACD">—</td></tr>
+            <tr><td>MACD (EMAs)</td><td class="mono" id="indMACD">—</td></tr>
             <tr><td>EMA سريع</td><td class="mono" id="indEMAF">—</td></tr>
             <tr><td>EMA بطيء</td><td class="mono" id="indEMAS">—</td></tr>
+            <tr><td>Stoch %K</td><td class="mono" id="indK">—</td></tr>
+            <tr><td>Stoch %D</td><td class="mono" id="indD">—</td></tr>
           </tbody>
         </table>
 
@@ -175,7 +179,7 @@
 
     <!-- Backtest -->
     <div class="card">
-      <label>اختبار الاستراتيجية</label>
+      <label>اختبار الاستراتيجية (Backtest)</label>
       <div class="row small">
         <div class="col">
           <label class="muted">CSV للاختبار (اختياري)</label>
@@ -195,7 +199,7 @@
           <input id="btStrict" type="checkbox" checked>
         </div>
         <div class="col">
-          <label class="muted">Walk-Forward (3-fold)</label>
+          <label class="muted">Walk-Forward (3-Fold)</label>
           <input id="btWalk" type="checkbox" checked>
         </div>
         <div class="col">
@@ -214,7 +218,7 @@
         <div class="col">
           <table>
             <thead>
-              <tr><th>#</th><th>تاريخ</th><th>Side</th><th>Entry</th><th>Exit</th><th>R</th><th>$PnL</th></tr>
+              <tr><th>#</th><th>تاريخ (محلي)</th><th>Side</th><th>Entry</th><th>Exit</th><th>R</th><th>$PnL</th></tr>
             </thead>
             <tbody id="btRows"></tbody>
           </table>
@@ -229,6 +233,6 @@
   </div>
 
   <!-- اربط سكربت التطبيق (زيد ?v إذا بدك تكسر الكاش) -->
-  <script src="app.js?v=18"></script>
+  <script src="app.js?v=20"></script>
 </body>
 </html>
