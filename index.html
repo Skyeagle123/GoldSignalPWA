@@ -1,238 +1,166 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>GoldSignals • الذهب</title>
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#0b1220" />
+  <link rel="manifest" href="manifest.json" />
   <style>
-    :root{--bg:#0b1220;--card:#0f172a;--muted:#94a3b8;--line:#1f2937}
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,Roboto}
-    .wrap{max-width:1080px;margin:24px auto;padding:0 12px}
-    h1{font-size:22px;margin:18px 0}
-    .row{display:flex;gap:12px;flex-wrap:wrap}
-    .col{flex:1 1 240px}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:12px 0}
-    label{display:block;margin:6px 0 8px;color:#cbd5e1}
-    input,select,button,textarea{
-      width:100%;padding:10px;border-radius:10px;border:1px solid #334155;background:#0b1220;color:#e5e7eb;outline:none
+    :root{
+      --bg:#0b1220; --panel:#111a2b; --muted:#9fb0c3; --txt:#fff;
+      --ok:#34d399; --bad:#f87171; --accent:#67e8f9; --line:#22314a;
     }
-    .small input,.small select{padding:6px}
-    button{background:#1e293b;cursor:pointer}
-    button:hover{background:#22344e}
-    .muted{color:var(--muted);font-size:12px}
-    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 system-ui,Segoe UI,Roboto}
+    .wrap{max-width:1120px;margin:0 auto;padding:18px}
+    .h1{font-size:22px;font-weight:700;margin:8px 0 16px}
+    .grid{display:grid;gap:14px}
+    @media(min-width:900px){ .grid.cols-3{grid-template-columns: 1fr 1fr 1fr} }
+    .card{background:var(--panel);border-radius:14px;padding:16px;border:1px solid #16223a}
+    .muted{color:var(--muted)}
+    .pill{display:inline-block;background:#0f1a2e;border:1px solid #1d2c4a;color:#cfe5ff;
+      padding:.45rem .7rem;border-radius:999px;font-weight:600}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .row>.pill{flex:1 1 120px;text-align:center}
+    .btn{background:#0f1a2e;border:1px solid #1d2c4a;color:#e6f3ff;padding:.6rem .9rem;border-radius:10px;cursor:pointer}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    input,select{width:100%;background:#0f1a2e;border:1px solid #1d2c4a;color:#e6f3ff;border-radius:10px;padding:.6rem .7rem}
+    label{display:block;margin:.35rem 0 .35rem}
+    .kpi {display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .kpi .box{background:#0f1a2e;border:1px solid #1d2c4a;border-radius:12px;padding:12px;text-align:center}
+    .kpi .t{color:#9fb0c3;font-size:12px}
+    .kpi .v{font-size:22px;font-weight:800;margin-top:6px}
+    .hr{height:1px;background:var(--line);margin:14px 0}
+    canvas{width:100%;height:360px;background:#0d1425;border-radius:14px;border:1px dashed #1e2c46}
+    .legend{color:#9fb0c3;font-size:13px;margin-top:8px}
     table{width:100%;border-collapse:collapse}
-    th,td{border-bottom:1px solid var(--line);padding:8px;text-align:center;font-size:13px}
-    .pill{display:inline-block;padding:6px 10px;border:1px solid #334155;border-radius:999px;background:#0b1220;cursor:pointer;text-align:center}
-    .pill.active{background:#1e293b}
-    .kpi{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-    .kpi .box{background:#0b1220;border:1px dashed #334155;border-radius:10px;padding:10px;text-align:center}
-    canvas{width:100%;height:360px;background:#0b1220;border:1px dashed #334155;border-radius:10px}
-    .grid2{display:grid;grid-template-columns:1.2fr .8fr;gap:12px}
-    @media(max-width:900px){.grid2{grid-template-columns:1fr}}
-
-    /* جديد: كروت KPI أفقية ونصيحة تحت الشارت */
-    .kpi-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-    @media(max-width:760px){.kpi-row{grid-template-columns:1fr}}
-    .kpi-card{background:#0b1220;border:1px solid #334155;border-radius:12px;padding:12px;text-align:center}
-    .kpi-title{color:#94a3b8;font-size:12px}
-    .kpi-value{font-family:ui-monospace,monospace;font-size:20px;margin-top:6px}
-    .advice-box{margin-top:10px;background:#0b1220;border:1px dashed #334155;color:#e5e7eb;border-radius:10px;padding:10px}
+    th,td{padding:8px;border-bottom:1px solid #1b2943}
+    th{color:#a9bdd5;text-align:right}
+    td.r{text-align:left}
+    .good{color:var(--ok)} .bad{color:var(--bad)}
+    .mini{font-size:12px}
+    .sticky-run{position:sticky;bottom:14px;display:flex;justify-content:center}
+    .sticky-run .btn{box-shadow:0 8px 30px rgba(0,0,0,.35)}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>GoldSignals • الذهب</h1>
+    <div class="h1">GoldSignals • الذهب</div>
 
-    <!-- المصدر -->
+    <!-- أعلى الصفحة: الكي بي آيز -->
+    <div class="card kpi">
+      <div class="box">
+        <div class="t">Pivot (NY)</div>
+        <div class="v" id="pivotP">—</div>
+      </div>
+      <div class="box">
+        <div class="t">التوقيت</div>
+        <div class="v" id="liveTime">—</div>
+      </div>
+      <div class="box">
+        <div class="t">السعر</div>
+        <div class="v" id="livePrice">—</div>
+      </div>
+    </div>
+
+    <!-- ملخص -->
     <div class="card">
+      <div id="summaryText" class="muted">لا توجد إشارة حالياً</div>
+      <div class="hr"></div>
       <div class="row">
-        <div class="col">
-          <label>رابط CSV (اختياري):</label>
-          <input id="csvInput" class="mono" placeholder="https://raw.githubusercontent.com/Skyeagle123/GoldSignalPWA/main/XAUUSD_5min.csv">
-          <div class="muted">اتركه فارغًا لقراءة الملف الافتراضي <span class="mono">XAUUSD_5min.csv</span> من نفس المجلد.</div>
-        </div>
-        <div class="col">
-          <label>&nbsp;</label>
-          <button id="runBtn">تشغيل/تحديث التحليل</button>
-          <div class="muted mono" id="status"></div>
-        </div>
+        <span class="pill">R1: <b id="r1">—</b></span>
+        <span class="pill">R2: <b id="r2">—</b></span>
+        <span class="pill">R3: <b id="r3">—</b></span>
+        <span class="pill">S1: <b id="s1">—</b></span>
+        <span class="pill">S2: <b id="s2">—</b></span>
+        <span class="pill">S3: <b id="s3">—</b></span>
       </div>
     </div>
 
-    <!-- إعدادات سريعة -->
+    <!-- الشارت -->
     <div class="card">
-      <div class="row">
-        <div class="col small">
-          <label>الإطارات</label>
-          <div class="row">
-            <div class="col"><div id="tf5"  class="pill active">5 دقائق</div></div>
-            <div class="col"><div id="tf30" class="pill">30 دقيقة</div></div>
-            <div class="col"><div id="tf60" class="pill">ساعة</div></div>
-            <div class="col"><div id="tfD"  class="pill">يوم (NY)</div></div>
-          </div>
-        </div>
-        <div class="col small">
-          <label>خيارات</label>
-          <div class="row">
-            <div class="col"><label><input id="proMode" type="checkbox"> وضع دقيق (PRO)</label></div>
-            <div class="col"><label><input id="mtfConfirm" type="checkbox" checked> تأكيد MTF</label></div>
-            <div class="col"><label><input id="togglePivotFilter" type="checkbox"> فلتر Pivot</label></div>
-          </div>
-        </div>
-        <div class="col small">
-          <label>تنبيه قرب الدخول</label>
-          <div class="row">
-            <div class="col"><label><input id="alertEnable" type="checkbox"> تفعيل</label></div>
-            <div class="col"><input id="alertDistance" type="number" step="0.1" value="0.5" placeholder="المسافة $"></div>
-          </div>
-        </div>
-      </div>
+      <div class="legend">• الرسم البياني (الأبيض = السعر الحي • الأزرق = دخول • الأخضر = TP • الأحمر = SL)</div>
+      <canvas id="chart"></canvas>
     </div>
 
-    <!-- السعر الحي + Pivot + نصيحة -->
-    <div class="card">
-      <label>السعر الحي</label>
-      <div class="kpi-row">
-        <div class="kpi-card">
-          <div class="kpi-title">السعر</div>
-          <div id="livePrice" class="kpi-value">—</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-title">التوقيت</div>
-          <div id="liveTime" class="kpi-value">—</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-title">Pivot (NY)</div>
-          <div class="kpi-value">P: <span id="pivotP">—</span></div>
-        </div>
-      </div>
-      <div class="advice-box" id="adviceBox">—</div>
-      <div class="mono muted" style="margin-top:8px">
-        R1: <span id="r1">—</span> • R2: <span id="r2">—</span> • R3: <span id="r3">—</span> •
-        S1: <span id="s1">—</span> • S2: <span id="s2">—</span> • S3: <span id="s3">—</span>
-      </div>
-    </div>
-
-    <!-- الرسم + المؤشرات -->
-    <div class="grid2">
+    <!-- الإعدادات المختصرة -->
+    <div class="grid cols-3">
       <div class="card">
-        <label>الرسم البياني (شمعات) • الأبيض = السعر الحي • الأزرق = دخول • الأخضر = TP • الأحمر = SL</label>
-        <canvas id="chart"></canvas>
-
-        <!-- نصيحة تحت الشارت مباشرة (مكرر لسهولة الملاحظة – يحدّث الإثنان معًا) -->
-        <div class="advice-box" id="adviceBox2" style="margin-top:12px">—</div>
+        <label>رابط CSV (اختياري): <input id="csvInput" placeholder="اتركه فاضي لاستعمال XAUUSD_5min.csv" /></label>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="tf5">5 دقائق</button>
+          <button class="btn" id="tf30">30 دقيقة</button>
+          <button class="btn" id="tf60">ساعة</button>
+          <button class="btn" id="tfD">(NY) يوم</button>
+        </div>
+        <div class="hr"></div>
+        <label><input type="checkbox" id="proMode" /> وضع دقيق (PRO)</label>
+        <label><input type="checkbox" id="mtfConfirm" /> تأكيد MTF</label>
+        <label><input type="checkbox" id="togglePivotFilter" checked/> فلتر Pivot</label>
+        <label><input type="checkbox" id="toggleNyHours" /> تقييد ساعات نيويورك</label>
+        <div class="hr"></div>
+        <label class="mini">تفعيل تنبيه قرب الدخول <input type="checkbox" id="alertEnable" checked /></label>
+        <label class="mini">مسافة الاقتراب (بالدولار) <input id="alertDistance" value="0.5" /></label>
+        <div class="sticky-run" style="margin-top:8px"><button class="btn" id="runBtn">حساب الإشارات الآن</button></div>
       </div>
 
       <div class="card">
-        <label>المؤشرات</label>
-        <table>
-          <tbody>
-            <tr><td>RSI</td><td class="mono" id="indRSI">—</td></tr>
-            <tr><td>MACD (EMAs)</td><td class="mono" id="indMACD">—</td></tr>
-            <tr><td>EMA سريع</td><td class="mono" id="indEMAF">—</td></tr>
-            <tr><td>EMA بطيء</td><td class="mono" id="indEMAS">—</td></tr>
-            <tr><td>Stoch %K</td><td class="mono" id="indK">—</td></tr>
-            <tr><td>Stoch %D</td><td class="mono" id="indD">—</td></tr>
-          </tbody>
-        </table>
+        <div class="muted mini">الإعدادات الفنية</div>
+        <label>EMA سريع <input id="emaFast" value="12" /></label>
+        <label>EMA بطيء <input id="emaSlow" value="26" /></label>
+        <label>RSI <input id="rsiPeriod" value="14" /></label>
+        <div class="hr"></div>
+        <label>ATR <input id="atrPeriod" value="14" /></label>
+        <label>SL×ATR <input id="slMult" value="1.5" /></label>
+        <label>TP1×ATR <input id="tp1Mult" value="1.0" /></label>
+        <label>TP2×ATR <input id="tp2Mult" value="2.0" /></label>
+        <label>ATR% min <input id="atrMinPct" value="0.05" /></label>
+        <label>ATR% max <input id="atrMaxPct" value="0.80" /></label>
+        <div class="hr"></div>
+        <label>حجم الحساب $ <input id="acctSize" value="10000" /></label>
+        <label>مخاطرة صفقة % <input id="riskPct" value="1.0" /></label>
+      </div>
 
-        <div style="margin-top:12px">
-          <label>إعدادات متقدمة</label>
-          <div class="row small">
-            <div class="col"><input id="emaFast" type="number" value="12" placeholder="EMA سريع"></div>
-            <div class="col"><input id="emaSlow" type="number" value="26" placeholder="EMA بطيء"></div>
-            <div class="col"><input id="rsiPeriod" type="number" value="14" placeholder="RSI"></div>
-          </div>
-          <div class="row small" style="margin-top:8px">
-            <div class="col"><input id="atrPeriod" type="number" value="14" placeholder="ATR"></div>
-            <div class="col"><input id="slMult" type="number" step="0.1" value="1.5" placeholder="SL × ATR"></div>
-            <div class="col"><input id="tp1Mult" type="number" step="0.1" value="1.0" placeholder="TP1 × ATR"></div>
-            <div class="col"><input id="tp2Mult" type="number" step="0.1" value="2.0" placeholder="TP2 × ATR"></div>
-          </div>
-          <div class="row small" style="margin-top:8px">
-            <div class="col"><input id="atrMinPct" type="number" step="0.01" value="0.05" placeholder="ATR% min"></div>
-            <div class="col"><input id="atrMaxPct" type="number" step="0.01" value="0.8" placeholder="ATR% max"></div>
-          </div>
-          <div class="row small" style="margin-top:8px">
-            <div class="col"><input id="acctSize" type="number" value="10000" placeholder="حجم الحساب $"></div>
-            <div class="col"><input id="riskPct" type="number" step="0.1" value="1.0" placeholder="مخاطرة %/صفقة"></div>
-          </div>
+      <div class="card">
+        <div class="muted mini">المؤشرات</div>
+        <div id="indicatorsBox">
+          <div>RSI: <b id="indRSI">—</b></div>
+          <div>MACD: <b id="indMACD">—</b></div>
+          <div>EMA سريع: <b id="indEMAF">—</b></div>
+          <div>EMA بطيء: <b id="indEMAS">—</b></div>
+          <div>Stoch: <b id="indStoch">—</b></div>
+          <div>BB: <b id="indBB">—</b></div>
         </div>
+        <div class="hr"></div>
+        <label><input type="checkbox" id="useStoch" checked /> تفعيل Stochastic</label>
+        <div class="row">
+          <label style="flex:1">K <input id="stochK" value="14" /></label>
+          <label style="flex:1">D <input id="stochD" value="3" /></label>
+        </div>
+        <label style="margin-top:6px"><input type="checkbox" id="useBB" checked /> تفعيل Bollinger</label>
+        <div class="row">
+          <label style="flex:1">الفترة <input id="bbPeriod" value="20" /></label>
+          <label style="flex:1">الانحراف <input id="bbStd" value="2" /></label>
+        </div>
+        <div class="hr"></div>
+        <div id="adviceText" class="muted">—</div>
       </div>
     </div>
 
-    <!-- جدول آخر الشموع -->
+    <!-- جدول آخر القراءات -->
     <div class="card">
-      <label>آخر الشموع</label>
       <table>
         <thead>
           <tr>
-            <th>التاريخ</th><th>الوقت</th><th>الإغلاق</th><th>Entry</th><th>SL</th><th>TP1</th><th>TP2</th>
+            <th>#</th><th>التاريخ (محلي)</th><th>Side</th><th>Entry</th><th>Exit</th><th>R</th><th>$PnL</th>
           </tr>
         </thead>
         <tbody id="rowsBody"></tbody>
       </table>
     </div>
-
-    <!-- Backtest -->
-    <div class="card">
-      <label>اختبار الاستراتيجية (Backtest)</label>
-      <div class="row small">
-        <div class="col">
-          <label class="muted">CSV للاختبار (اختياري)</label>
-          <input id="btCsv" type="file" accept=".csv">
-        </div>
-        <div class="col">
-          <label class="muted">الإطار</label>
-          <select id="btTf">
-            <option value="5">5 دقائق</option>
-            <option value="30">30 دقيقة</option>
-            <option value="60">ساعة</option>
-            <option value="1440">يوم (NY)</option>
-          </select>
-        </div>
-        <div class="col">
-          <label class="muted">Strict Filters</label>
-          <input id="btStrict" type="checkbox" checked>
-        </div>
-        <div class="col">
-          <label class="muted">Walk-Forward (3-Fold)</label>
-          <input id="btWalk" type="checkbox" checked>
-        </div>
-        <div class="col">
-          <label class="muted">حد خسارة يومية %</label>
-          <input id="btDailyRiskCap" type="number" step="0.1" value="3.0">
-        </div>
-        <div class="col">
-          <label>&nbsp;</label>
-          <button id="btRun">تشغيل الاختبار</button>
-        </div>
-      </div>
-
-      <div id="btStats" class="mono" style="margin-top:10px">—</div>
-
-      <div class="row" style="margin-top:12px">
-        <div class="col">
-          <table>
-            <thead>
-              <tr><th>#</th><th>تاريخ (محلي)</th><th>Side</th><th>Entry</th><th>Exit</th><th>R</th><th>$PnL</th></tr>
-            </thead>
-            <tbody id="btRows"></tbody>
-          </table>
-        </div>
-        <div class="col">
-          <label>منحنى الإكويتي</label>
-          <canvas id="btEquity" style="height:220px"></canvas>
-        </div>
-      </div>
-    </div>
-
   </div>
 
-  <!-- اربط سكربت التطبيق (زيد ?v إذا بدك تكسر الكاش) -->
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=14" defer></script>
 </body>
 </html>
