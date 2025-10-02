@@ -207,8 +207,18 @@ function strongMTFConfirm(rows30,rows60){
 
 /* ---------------- إشارة + نصيحة ---------------- */
 function rsiMacdContext(series,rsiArr,macdObj,i){return {rsiVal:rsiArr[i],macdNow:macdObj.macd[i],macdPrev:macdObj.macd[i-1],macdSig:macdObj.signal[i],price:series[i].close,emaF:macdObj.emaF[i],emaS:macdObj.emaS[i]};}
-function adjustEntry(entry,priceNow,atrV,side){ if(!Number.isFinite(entry)||!Number.isFinite(priceNow)||!Number.isFinite(atrV)) return entry;
-  const EPS=0.01; if(Math.abs(entry-priceNow)<EPS){const bump=0.2*atrV; return side==='شراء'?priceNow+bump:priceNow-bump;} return entry;}
+
+/* تعديل صغير لضمان إنّ سعر الدخول ما يساوي السعر الحي تمامًا */
+function adjustEntry(entry,priceNow,atrV,side){
+  if(!Number.isFinite(entry)||!Number.isFinite(priceNow)||!Number.isFinite(atrV)) return entry;
+  const EPS=0.01;
+  if(Math.abs(entry-priceNow)<EPS){
+    const bump=Math.max(0.2*atrV, EPS*2);
+    return side==='شراء'?priceNow+bump:priceNow-bump;
+  }
+  return entry;
+}
+
 function calcPositionSize(entry,sl){const risk=ACCT_SIZE*(RISK_PCT/100), dist=Math.abs(entry-sl); if(!Number.isFinite(risk)||!Number.isFinite(dist)||dist<=0) return null; return {riskAmt:risk,units:risk/dist};}
 
 function filteredSignal(tf,series,rsiArr,macdObj,atrArr,rows5Ref,rows30Ref,rows60Ref,piv,stochObj,bbObj){
@@ -220,30 +230,50 @@ function filteredSignal(tf,series,rsiArr,macdObj,atrArr,rows5Ref,rows30Ref,rows6
   if(sig!=='حيادي'&&piv){ const emaS=macdObj.emaS[i]; let e=(sig==='شراء')?Math.max(series[i].close,Number.isFinite(emaS)?emaS:series[i].close):Math.min(series[i].close,Number.isFinite(emaS)?emaS:series[i].close); e=adjustEntry(e,series[i].close,atrArr?.[i]??0.5,sig); if(priceNearAnyPivot(e,piv,PIVOT_MIN_DISTANCE)) sig='حيادي'; }
   return sig;
 }
+
+/* ——— نصيحة مكتوبة دائمًا مع أرقام الدخول/الوقف/الأهداف ——— */
 function buildAdvice(tf,series,rsiArr,macdObj,piv,live,atrArr,rows5,rows30,rows60,stoch,bb){
-  if(!series?.length) return '—'; const i=series.length-1, emaS=macdObj.emaS[i], last=series[i].close;
+  if(!series?.length) return '—';
+  const i=series.length-1, emaS=macdObj.emaS[i], last=series[i].close;
   const nowPx=(live&&(Date.now()-live.timeMs)<20000&&Number.isFinite(live.price))?live.price:last;
+
   const sigFiltered=filteredSignal(tf,series,rsiArr,macdObj,atrArr,rows5,rows30,rows60,piv,stoch,bb);
-  const ctx=rsiMacdContext(series,rsiArr,macdObj,i); const sigSummary=classifyFinal(ctx);
-  const atrV=atrArr?.[i] ?? Math.max(0.3, Math.abs(series[i].high-series[i].low)); const atrp=atrPct(atrV,nowPx);
+  const ctx=rsiMacdContext(series,rsiArr,macdObj,i);
+  const sigSummary=classifyFinal(ctx);
+
+  const atrV=atrArr?.[i] ?? Math.max(0.3, Math.abs(series[i].high-series[i].low));
+  const atrp=atrPct(atrV,nowPx);
+
   const mkLines=(side)=>{ let entry=(side==='شراء')?Math.max(nowPx,Number.isFinite(emaS)?emaS:nowPx):Math.min(nowPx,Number.isFinite(emaS)?emaS:nowPx);
     entry=adjustEntry(entry,nowPx,atrV,side); const sl=(side==='شراء')?entry-SL_ATR_MULT*atrV:entry+SL_ATR_MULT*atrV;
     const tp1=(side==='شراء')?entry+TP1_ATR_MULT*atrV:entry-TP1_ATR_MULT*atrV;
     const tp2=(side==='شراء')?entry+TP2_ATR_MULT*atrV:entry-TP2_ATR_MULT*atrV; return {entry,sl,tp1,tp2}; };
-  if(sigFiltered!=='حيادي'){ const L=mkLines(sigFiltered); const ps=calcPositionSize(L.entry,L.sl);
+
+  if(sigFiltered!=='حيادي'){
+    const L=mkLines(sigFiltered);
+    const ps=calcPositionSize(L.entry,L.sl);
     const sizeTxt=ps?` • حجم تقريبي: ${nf2.format(ps.units)} وحدة (مخاطرة ≈ ${nf2.format(ps.riskAmt)}$)`:''; 
+    const extra=`ATR%: ${Number.isFinite(atrp)?nf2.format(atrp):'—'} • آخر سعر (حي): ${nf2.format(nowPx)}`;
     return `الإطار: ${tfLabel(tf)} • الإشارة: ${sigFiltered}.
 سعر الدخول: ${nf2.format(L.entry)} • وقف الخسارة: ${nf2.format(L.sl)}
-الأهداف: ${nf2.format(L.tp1)} (جزئي/نقل إلى BE) ثم ${nf2.format(L.tp2)} مع Trailing ATR.${sizeTxt}`; }
-  if(sigSummary==='شراء'||sigSummary==='بيع'){ const reasons=[];
+الأهداف: ${nf2.format(L.tp1)} (جزئي/نقل إلى BE) ثم ${nf2.format(L.tp2)}.
+${extra}${sizeTxt}`;
+  }
+
+  if(sigSummary==='شراء'||sigSummary==='بيع'){
+    const reasons=[];
     if(!inNyTradingHours(series[i].ts)) reasons.push('خارج ساعات نيويورك');
     const ap=atrPct(atrV,nowPx); if(Number.isFinite(ap)&&(ap<ATR_MIN_PCT||ap>ATR_MAX_PCT)) reasons.push('ATR% خارج النطاق');
     if(tf===5 && MTF_CONFIRM && !(strongMTFConfirm(rows30,rows60))) reasons.push('فشل تأكيد MTF');
     if(piv){ let tmp=mkLines(sigSummary).entry; if(priceNearAnyPivot(tmp,piv,PIVOT_MIN_DISTANCE)) reasons.push('قريب جدًا من Pivot'); }
-    const L=mkLines(sigSummary); return `الإطار: ${tfLabel(tf)} • الملخص: ${sigSummary} (مرفوض بالفلاتر: ${reasons.join(' • ')||'—'}).
+    const L=mkLines(sigSummary);
+    return `الإطار: ${tfLabel(tf)} • الملخص: ${sigSummary} (مرفوض بالفلاتر: ${reasons.join(' • ')||'—'}).
 (إطلاع فقط) دخول افتراضي: ${nf2.format(L.entry)} • SL: ${nf2.format(L.sl)} • TP1/TP2: ${nf2.format(L.tp1)} / ${nf2.format(L.tp2)}.
-ATR%: ${Number.isFinite(atrp)?nf2.format(atrp):'—'} ضمن [${ATR_MIN_PCT}–${ATR_MAX_PCT}] • آخر سعر: ${nf2.format(nowPx)}.`; }
-  let base=`الإطار: ${tfLabel(tf)} • الإشارة: حيادي. `; if(Number.isFinite(atrp)) base+=`ATR%: ${nf2.format(atrp)} ضمن [${ATR_MIN_PCT}–${ATR_MAX_PCT}]؟ `;
+ATR%: ${Number.isFinite(atrp)?nf2.format(atrp):'—'} • آخر سعر: ${nf2.format(nowPx)}.`;
+  }
+
+  let base=`الإطار: ${tfLabel(tf)} • الإشارة: حيادي. `;
+  if(Number.isFinite(atrp)) base+=`ATR%: ${nf2.format(atrp)}. `;
   return base+`آخر سعر: ${nf2.format(nowPx)}.`;
 }
 
