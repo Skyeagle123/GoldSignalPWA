@@ -7,7 +7,7 @@ const LIVE_SOURCES = [
 ];
 
 // ← عدّل هذا بالرابط الفعلي للـWorker
-const SSE_URL = 'https://gold-ticks.YOUR_SUBDOMAIN.workers.dev/ticks';
+const SSE_URL = 'https://gold-ticks.samer-mourtada.workers.dev/ticks';
 
 const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';
 const LIVE_REFRESH_SEC = 1;    // احتياطي (polling) كل 1 ثانية
