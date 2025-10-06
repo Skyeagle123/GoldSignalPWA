@@ -767,49 +767,45 @@ setInterval(refreshLive, LIVE_REFRESH_SEC*1000);
     } catch { return series; }
   }
 
-  // الدالة المطلوبة (تنزيل CSV)
-  function downloadMergedCsv() {
-    let s = getSeriesForExport();
-    if (!s || !s.length) {
-      alert('ما في بيانات للتصدير. شغّل التحليل أولاً أو استورد CSV.');
-      return;
-    }
-    s = mergeWithLive(s);
+  // بدّل/أضف هالدالة
+function downloadMergedCsv(){
+  // 1) جيب السلسلة الجاهزة للتصدير
+  let s = Array.isArray(window.__seriesForExport) ? window.__seriesForExport.slice() : null;
+  if(!s || !s.length){ alert('ما في بيانات للتصدير. شغّل التحليل أولاً أو استورد CSV.'); return; }
 
-    const DELIM = ',';            // بدّلها إلى ';' إذا Excel عندك يفصل بالمنقوطة
-    const CRLF  = '\r\n';
-    const BOM   = '\uFEFF';
-    const q = v => `"${String(v).replace(/"/g, '""')}"`;
+  // 2) ادمج السعر الحي بنفس منطقك (اذا عندك mergeWithLive خليه)
+  if (typeof mergeWithLive === 'function') s = mergeWithLive(s);
 
-    const header = ['Date','Open','High','Low','Close'];
-    const rows   = s.map(r => [
-      new Date(r.ts).toISOString().replace('T',' ').slice(0,19),
-      r.open, r.high, r.low, r.close
-    ]);
+  // 3) CSV مريح لـ Excel Mobile: UTF-8 بدون BOM + فاصلة
+  const DELIM = ',';            // إذا طلع بعمود واحد بدّلها إلى ';'
+  const CRLF  = '\r\n';
+  const q = v => `"${String(v).replace(/"/g,'""')}"`;
 
-    const csv = [header.map(q).join(DELIM)]
-      .concat(rows.map(row => row.map(q).join(DELIM)))
-      .join(CRLF) + CRLF;
+  const header = ['Date','Open','High','Low','Close'];
+  const rows = s.map(r => [
+    new Date(r.ts).toISOString().replace('T',' ').slice(0,19),
+    r.open, r.high, r.low, r.close
+  ]);
 
-    const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url;
-    a.download = `XAUUSD_${window.currentTF||5}min_merged.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
+  const csv = [header.map(q).join(DELIM)]
+    .concat(rows.map(row => row.map(q).join(DELIM)))
+    .join(CRLF) + CRLF;
 
-  // ربط الزر (لو ما كان مربوط)
-  function wireExportBtn() {
-    const btn = document.getElementById('btnExportCsv');
-    if (btn && !btn.__wired) {
-      btn.addEventListener('click', downloadMergedCsv);
-      btn.__wired = true;
-    }
-  }
+  // 4) اسم ملف ديناميكي (ما يعود يكرر نفس الاسم)
+  const tf = (window.currentTF || 5);
+  const now = new Date();
+  const stamp = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_`+
+                `${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+  const fname = `XAUUSD_${tf}min_merged_${stamp}.csv`;
+
+  // 5) نزّل الملف
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' }); // بدون BOM
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
 
   // نفّذ الربط الآن وبعد تحميل الـDOM
   wireExportBtn();
