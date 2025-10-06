@@ -738,3 +738,83 @@ setInterval(refreshLive, LIVE_REFRESH_SEC*1000);
   document.addEventListener('DOMContentLoaded', wireBtn);
   wireBtn();
 })();
+/* === Export merged CSV (drop-in) === */
+(function () {
+  // استخدم آخر سلسلة رُسمت (إذا كنت مفرغ __seriesForExport بالباتش)
+  function getSeriesForExport() {
+    return Array.isArray(window.__seriesForExport) ? window.__seriesForExport.slice() : null;
+  }
+
+  // دمج السعر الحي في الشمعة الحالية (نفس منطقك)
+  function mergeWithLive(series) {
+    try {
+      const tf = window.currentTF || 5;
+      const live = window.LAST_LIVE;
+      if (!Array.isArray(series) || !series.length || !live) return series;
+      const ms = tf * 60 * 1000;
+      const b  = Math.floor((live.timeMs || Date.now()) / ms) * ms;
+      const out  = series.slice();
+      const last = { ...out[out.length - 1] };
+      if (b === last.ts) {
+        last.close = live.price;
+        last.high  = Math.max(last.high, live.price);
+        last.low   = Math.min(last.low,  live.price);
+        out[out.length - 1] = last;
+      } else if (b > last.ts) {
+        out.push({ ts: b, open: last.close, high: live.price, low: live.price, close: live.price });
+      }
+      return out;
+    } catch { return series; }
+  }
+
+  // الدالة المطلوبة (تنزيل CSV)
+  function downloadMergedCsv() {
+    let s = getSeriesForExport();
+    if (!s || !s.length) {
+      alert('ما في بيانات للتصدير. شغّل التحليل أولاً أو استورد CSV.');
+      return;
+    }
+    s = mergeWithLive(s);
+
+    const DELIM = ',';            // بدّلها إلى ';' إذا Excel عندك يفصل بالمنقوطة
+    const CRLF  = '\r\n';
+    const BOM   = '\uFEFF';
+    const q = v => `"${String(v).replace(/"/g, '""')}"`;
+
+    const header = ['Date','Open','High','Low','Close'];
+    const rows   = s.map(r => [
+      new Date(r.ts).toISOString().replace('T',' ').slice(0,19),
+      r.open, r.high, r.low, r.close
+    ]);
+
+    const csv = [header.map(q).join(DELIM)]
+      .concat(rows.map(row => row.map(q).join(DELIM)))
+      .join(CRLF) + CRLF;
+
+    const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `XAUUSD_${window.currentTF||5}min_merged.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // ربط الزر (لو ما كان مربوط)
+  function wireExportBtn() {
+    const btn = document.getElementById('btnExportCsv');
+    if (btn && !btn.__wired) {
+      btn.addEventListener('click', downloadMergedCsv);
+      btn.__wired = true;
+    }
+  }
+
+  // نفّذ الربط الآن وبعد تحميل الـDOM
+  wireExportBtn();
+  document.addEventListener('DOMContentLoaded', wireExportBtn);
+
+  // خلّي الدالة متاحة لو حبيت تناديها يدويًا
+  window.downloadMergedCsv = downloadMergedCsv;
+})();
