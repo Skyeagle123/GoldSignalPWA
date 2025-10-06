@@ -1,7 +1,7 @@
 /* ======================= GoldSignals • app.js (PRO+) ======================= */
 /* --------- إعداد عام --------- */
 const LIVE_SOURCES = [
-  'https://goldprice-proxy.samer-mourtada.workers.dev/price',
+  'https://gold-ticks.samer-mourtada.workers.dev/price',
   'https://api.metals.live/v1/spot/gold',
 ];
 const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';
