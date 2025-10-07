@@ -237,5 +237,45 @@
 </div>
 
 <script src="app.js?v=37"></script>
+ <!-- ===================== إشعارات وإعدادات المؤشرات (إضافة جديدة) ===================== -->
+<style>
+  .panel-signal{margin:16px 0;padding:12px;border:1px solid #2a2f3a;border-radius:12px;background:#111827;color:#e5e7eb}
+  .panel-signal h3{margin:0 0 10px;font-size:16px}
+  .panel-signal .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .panel-signal label{display:inline-flex;gap:6px;align-items:center;cursor:pointer}
+  .toast-signal{position:fixed;inset-inline-start:16px;inset-block-end:16px;background:#0b1220;color:#e2e8f0;
+    border:1px solid #334155;border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.25);
+    transform:translateY(20px);opacity:0;pointer-events:none;transition:.25s}
+  .toast-signal.show{transform:translateY(0);opacity:1;pointer-events:auto}
+  .pill{background:#1f2937;border:1px solid #334155;border-radius:999px;padding:6px 12px;color:#e2e8f0}
+</style>
+
+<div class="panel-signal" id="signalPanel">
+  <h3>إعدادات الإشارات والمؤشّرات</h3>
+  <div class="row" style="margin-bottom:8px">
+    <strong>الوضع:</strong>
+    <label><input type="radio" name="sigMode" value="auto" checked> تلقائي</label>
+    <label><input type="radio" name="sigMode" value="trend"> ترند</label>
+    <label><input type="radio" name="sigMode" value="range"> رينج</label>
+  </div>
+  <div class="row" style="margin-bottom:8px">
+    <strong>المؤشّرات المفعّلة:</strong>
+    <label><input type="checkbox" id="sigUseEma" checked> EMA</label>
+    <label><input type="checkbox" id="sigUseMacd"> MACD</label>
+    <label><input type="checkbox" id="sigUseRsi" checked> RSI</label>
+    <label><input type="checkbox" id="sigUseStoch"> Stoch</label>
+    <label><input type="checkbox" id="sigUseBb"> BB</label>
+  </div>
+  <div class="row">
+    <strong>التنبيه:</strong>
+    <label><input type="checkbox" id="sigBeep" checked> صوت</label>
+    <label><input type="checkbox" id="sigToast" checked> رسالة على الشاشة</label>
+    <span class="pill" id="btnTestSignal" title="تجربة التنبيه">تجربة التنبيه</span>
+  </div>
+</div>
+
+<!-- Toast مرئي للإشارات -->
+<div id="signalToast" class="toast-signal" role="status" aria-live="polite"></div>
+<!-- ================================================================================ --> 
 </body>
 </html>
