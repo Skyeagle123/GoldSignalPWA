@@ -1117,4 +1117,228 @@ function downloadMergedCsv(){
     }
   }catch(e){ console.error('CSV wiring error', e); }
 })();
+// ====================== PATCH: تنظيم المؤشرات + تنبيه صوتي/مرئي ======================
+(function () {
+  // 0) إعدادات افتراضية + حفظ/استرجاع
+  const defaults = {
+    mode: 'auto',  // auto | trend | range
+    useEma: true, useMacd: false, useRsi: true, useStoch: false, useBb: false,
+    beep: true, toast: true
+  };
+  const SKEY = 'signal_settings_v1';
+  function loadSettings(){
+    try { return Object.assign({}, defaults, JSON.parse(localStorage.getItem(SKEY)||'{}')); }
+    catch(e){ return {...defaults}; }
+  }
+  function saveSettings(s){ try { localStorage.setItem(SKEY, JSON.stringify(s)); } catch(e){} }
+  const S = window.SIGNAL_SETTINGS = loadSettings();
+
+  // 1) ربط عناصر الواجهة (التي أضفناها في HTML)
+  function bindUI(){
+    const byId = (id)=>document.getElementById(id);
+    const elMode = Array.from(document.querySelectorAll('input[name="sigMode"]'));
+    const elEma=byId('sigUseEma'), elMacd=byId('sigUseMacd'), elRsi=byId('sigUseRsi'),
+          elStoch=byId('sigUseStoch'), elBb=byId('sigUseBb');
+    const elBeep=byId('sigBeep'), elToast=byId('sigToast');
+    const elTest=byId('btnTestSignal');
+
+    // استرجاع الحالة
+    elMode.forEach(r=>{ r.checked = (r.value===S.mode); });
+    elEma.checked=S.useEma; elMacd.checked=S.useMacd; elRsi.checked=S.useRsi; elStoch.checked=S.useStoch; elBb.checked=S.useBb;
+    elBeep.checked=S.beep; elToast.checked=S.toast;
+
+    // حفظ عند التغيير
+    elMode.forEach(r=>r.addEventListener('change',()=>{ S.mode=r.value; saveSettings(S); }));
+    [elEma,elMacd,elRsi,elStoch,elBb].forEach((el,key)=>{
+      el.addEventListener('change',()=>{ 
+        S.useEma=elEma.checked; S.useMacd=elMacd.checked; S.useRsi=elRsi.checked; S.useStoch=elStoch.checked; S.useBb=elBb.checked;
+        saveSettings(S);
+      });
+    });
+    [elBeep,elToast].forEach(el=>el.addEventListener('change',()=>{ S.beep=elBeep.checked; S.toast=elToast.checked; saveSettings(S); }));
+
+    elTest?.addEventListener('click', ()=>{
+      notifySignal({side:'شراء', reason:'(تجربة)', tf:getTFLabel()});
+    });
+  }
+
+  // 2) تنبيه صوتي (WebAudio) + Toast مرئي
+  function beepOnce(freq=880, ms=160){
+    if(!S.beep) return;
+    try{
+      const ctx = new (window.AudioContext||window.webkitAudioContext)();
+      const osc = ctx.createOscillator(); const gain=ctx.createGain();
+      osc.type='sine'; osc.frequency.value=freq; gain.gain.value=0.05;
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      setTimeout(()=>{osc.stop(); ctx.close();}, ms);
+    }catch(e){}
+  }
+  function showToast(msg){
+    if(!S.toast) return;
+    const box = document.getElementById('signalToast');
+    if(!box) return;
+    box.textContent = msg;
+    box.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(()=>box.classList.remove('show'), 3500);
+  }
+  function notifySignal(sig){
+    const text = `إشارة ${sig.side} • ${sig.tf} ${sig.reason?('• '+sig.reason):''}`;
+    beepOnce(sig.side==='شراء'?920:620);
+    showToast(text);
+  }
+
+  // 3) أدوات مساعدة (نستخدم بياناتك الموجودة قدر الإمكان)
+  function getTFLabel(){
+    // لو عندك متغير currentTF عالمي (عندك غالبًا): نستخدمه، وإلا 5 د كبداية
+    const tf = (window.currentTF||5)|0;
+    return (tf===5?'5 دقائق': tf===30?'30 دقيقة': tf===60?'ساعة': tf===1440?'يوم':'TF');
+  }
+  function slope(a,b){ return (a==null||b==null)?0:(b-a); }
+  function lastN(arr,n){ return arr?.slice?.(-n)||[]; }
+
+  // 4) كشف وضع السوق بشكل مبسط
+  function detectRegime(series){
+    if(S.mode!=='auto') return S.mode; // المستخدم قرّر
+    // تقدير سريع: إذا نطاق BB ضيّق بالنسبة للسعر => رينج، وإلا ترند
+    const close = series?.close||series?.Close||series?.c||[];
+    if(!close.length) return 'trend';
+    const n = close.length;
+    const w = Math.max(20, Math.min(50, Math.floor(n*0.1)));
+    const seg = close.slice(-w);
+    const hi = Math.max(...seg), lo = Math.min(...seg), last = seg[seg.length-1];
+    const widthPct = (hi-lo)/Math.max(1,last);
+    return widthPct < 0.006 ? 'range' : 'trend'; // <0.6% نطاق ضيّق => رينج
+  }
+
+  // 5) منطق إشارة مبسّط يعتمد المؤشرات المفعّلة
+  function evaluateSignals(series){
+    const regime = detectRegime(series); // trend | range
+    const tfName = getTFLabel();
+
+    const close = series?.close||series?.Close||series?.c||[];
+    if(close.length<3) return null;
+
+    // EMA مبسّط (fallback إن لم يكن عندك دوال EMA)
+    function ema(arr, p){
+      const k = 2/(p+1); let e=arr[0]; for(let i=1;i<arr.length;i++) e = arr[i]*k + e*(1-k); return e;
+    }
+
+    let reason = [];
+    let buy=false, sell=false;
+
+    // EMA
+    if(S.useEma){
+      const fast = ema(close.slice(-120), 12);
+      const slow = ema(close.slice(-120), 50);
+      const prevFast = ema(close.slice(-121,-1), 12);
+      const prevSlow = ema(close.slice(-121,-1), 50);
+      const crossedUp = prevFast<=prevSlow && fast>slow;
+      const crossedDn = prevFast>=prevSlow && fast<slow;
+      if(regime==='trend'){
+        buy = buy || crossedUp; sell = sell || crossedDn;
+      }else{
+        // في الرينج: قلّل حساسية الـEMA
+        buy = buy || (crossedUp && (fast-slow)>0.1);
+        sell = sell || (crossedDn && (slow-fast)>0.1);
+      }
+      reason.push(`EMA ${crossedUp?'+':crossedDn?'-':'~'}`);
+    }
+
+    // RSI مبسّط (14) – زخم
+    if(S.useRsi){
+      const arr = close.slice(-200);
+      let gains=0, losses=0;
+      for(let i=1;i<arr.length;i++){ const d=arr[i]-arr[i-1]; if(d>0) gains+=d; else losses-=d; }
+      const rs = (gains||1)/((losses||1)); const rsi = 100-100/(1+rs);
+      if(regime==='trend'){
+        buy = buy && (rsi>55) || (!sell && rsi>60);
+        sell = sell && (rsi<45) || (!buy && rsi<40);
+      }else{ // رينج
+        buy = buy || (rsi<35);
+        sell = sell || (rsi>65);
+      }
+      reason.push(`RSI≈${rsi|0}`);
+    }
+
+    // Stoch اختياري (تبسيط)
+    if(S.useStoch && close.length>20){
+      const seg = close.slice(-20);
+      const hi=Math.max(...seg), lo=Math.min(...seg), last=seg[seg.length-1];
+      const k = (hi===lo)?50: ((last-lo)/(hi-lo))*100;
+      if(regime==='range'){
+        buy = buy || k<20; sell = sell || k>80;
+      }
+      reason.push(`StochK≈${k|0}`);
+    }
+
+    // BB كفلتر فقط
+    if(S.useBb && close.length>20){
+      const arr = close.slice(-20);
+      const mean = arr.reduce((a,b)=>a+b,0)/arr.length;
+      const std = Math.sqrt(arr.reduce((a,b)=>a+(b-mean)*(b-mean),0)/arr.length);
+      const upper = mean + 2*std, lower = mean - 2*std, last = arr[arr.length-1];
+      if(buy && last>upper) buy=false; // لا تشتري خارج الحد الأعلى
+      if(sell && last<lower) sell=false; // لا تبيع خارج الحد الأدنى
+      reason.push('BB');
+    }
+
+    if(buy && !sell) return {side:'شراء', tf:tfName, reason:reason.join(' • ')};
+    if(sell && !buy) return {side:'بيع', tf:tfName, reason:reason.join(' • ')};
+    return null;
+  }
+
+  // 6) نغرز نفسنا بعد التحديث/الرسم لنفحص وننبه (بدون لمس كودك)
+  let LAST_SIG = null;
+  function afterRenderHook(series){
+    try{
+      const sig = evaluateSignals(series);
+      if(!sig) return;
+      const key = `${sig.side}|${sig.tf}`;
+      if(key!==LAST_SIG){
+        LAST_SIG = key;
+        notifySignal(sig);
+        // لو حاب تبث حدث داخلي:
+        document.dispatchEvent(new CustomEvent('signal:new', {detail:sig}));
+      }
+    }catch(e){ /* silent */ }
+  }
+
+  // 7) محاولة الربط مع دوالك الحالية بشكل آمن
+  //   - إذا عندك buildAndRender أو renderTradeChart نغلّفها لكي نحصل على series
+  function patchGlobal(){
+    // 7.a buildAndRender(series)
+    if(typeof window.buildAndRender === 'function' && !window.buildAndRender.__patchedSignal){
+      const _orig = window.buildAndRender;
+      window.buildAndRender = function(series){
+        const r = _orig.apply(this, arguments);
+        try{ afterRenderHook(series||arguments[0]); }catch(e){}
+        return r;
+      };
+      window.buildAndRender.__patchedSignal = true;
+    }
+    // 7.b renderTradeChart(series)
+    if(typeof window.renderTradeChart === 'function' && !window.renderTradeChart.__patchedSignal){
+      const _orig = window.renderTradeChart;
+      window.renderTradeChart = function(series){
+        const r = _orig.apply(this, arguments);
+        try{ afterRenderHook(series||arguments[0]); }catch(e){}
+        return r;
+      };
+      window.renderTradeChart.__patchedSignal = true;
+    }
+    // 7.c إن ما قدرنا نوصل للـseries، جرّب خطاف دوري على آخر بيانات معروفه
+    if(!patchGlobal._interval){
+      patchGlobal._interval = setInterval(()=>{
+        const s = window.__LAST_SERIES__ || window.LAST_SERIES || null;
+        if(s) afterRenderHook(s);
+      }, 2500);
+    }
+  }
+
+  // 8) تشغيل
+  function init(){ bindUI(); patchGlobal(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
 
