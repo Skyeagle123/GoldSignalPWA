@@ -1342,3 +1342,43 @@ function downloadMergedCsv(){
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
 
+// ===== Sync panel (فوق) مع الإعدادات الأصلية (تحت) =====
+(function syncIndicatorsToggles(){
+  // غيّر السيلكتورز إذا IDs مختلفة عندك
+  const elPanelStoch = document.getElementById('sigUseStoch');
+  const elPanelBB    = document.getElementById('sigUseBb');
+
+  // أمثلة ID شائعة للقسم القديم – بدّلها إذا لزم:
+  const elOldStoch = document.querySelector('#stochEnable, input[name="stochEnable"]');
+  const elOldBB    = document.querySelector('#bbEnable, input[name="bbEnable"]');
+
+  // لو مو موجود ID عندك، جرّب نص اللابل:
+  function byLabel(contains){
+    return Array.from(document.querySelectorAll('label')).find(l=>l.textContent?.includes(contains))?.querySelector('input[type="checkbox"]');
+  }
+  const stochOld = elOldStoch || byLabel('Stochastic') || byLabel('Stoch');
+  const bbOld    = elOldBB    || byLabel('Bollinger')  || byLabel('BB');
+
+  function setIfDiff(el, val){
+    if(!el) return;
+    if(!!el.checked !== !!val){ el.checked = !!val; el.dispatchEvent(new Event('change',{bubbles:true})); }
+  }
+
+  // 1) ابتدائي: طابق حالة الاثنين
+  function initSync(){
+    if(stochOld && elPanelStoch){ setIfDiff(elPanelStoch, stochOld.checked); }
+    if(bbOld    && elPanelBB   ){ setIfDiff(elPanelBB,    bbOld.checked); }
+  }
+
+  // 2) من فوق → تحت
+  elPanelStoch?.addEventListener('change', ()=> stochOld && setIfDiff(stochOld, elPanelStoch.checked));
+  elPanelBB?.addEventListener('change',    ()=> bbOld    && setIfDiff(bbOld,    elPanelBB.checked));
+
+  // 3) من تحت → فوق
+  stochOld?.addEventListener('change', ()=> elPanelStoch && setIfDiff(elPanelStoch, stochOld.checked));
+  bbOld?.addEventListener('change',    ()=> elPanelBB    && setIfDiff(elPanelBB,    bbOld.checked));
+
+  // شغّل المزامنة أول ما تجهز الصفحة
+  if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', initSync); }
+  else { initSync(); }
+})();
