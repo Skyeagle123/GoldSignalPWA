@@ -113,3 +113,46 @@ window.fireSignalNotify = function({side, tf}){
   function set(v){ liveEl.textContent = v; }
   try{ set('—'); }catch{ set('—'); }
 })();
+/* === LIVE PRICE WIRING to your Worker === */
+(function () {
+  const WORKER = 'https://gold-ticks.samer-mourtada.workers.dev'; // عدّل إذا عنوانك غير
+  const el = document.getElementById('livePrice');
+
+  function fmt(n){ try{ return Number(n).toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2}); }catch(_){ return n; } }
+  function setLive(p){ if(el) el.textContent = fmt(p); }
+
+  // Fallback polling /price
+  async function pollPrice(){
+    try{
+      const r = await fetch(WORKER + '/price', {cache:'no-store'});
+      const j = await r.json();
+      if (j && (j.price ?? j.close)) setLive(j.price ?? j.close);
+    }catch(e){ /* تجاهل مؤقتًا */ }
+  }
+
+  // SSE /ticks (أفضل)
+  function startSSE(){
+    if (!('EventSource' in window)) { pollPrice(); return setInterval(pollPrice, 15000); }
+    try{
+      const es = new EventSource(WORKER + '/ticks');
+      es.onmessage = (e)=>{
+        try{
+          const d = JSON.parse(e.data);
+          if (d && d.price) setLive(d.price);
+        }catch(_){}
+      };
+      es.onerror = (_)=>{
+        // إذا ما في بث حي، رجع على polling
+        try{ es.close(); }catch(_){}
+        pollPrice();
+        setInterval(pollPrice, 15000);
+      };
+    }catch(_){
+      pollPrice();
+      setInterval(pollPrice, 15000);
+    }
+  }
+
+  // شغّل الربط
+  startSSE();
+})();
