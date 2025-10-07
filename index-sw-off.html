@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>تعطيل Service Worker مؤقتًا</title>
+  <style>
+    body{background:#0f172a;color:#e5e7eb;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;padding:24px;line-height:1.7}
+    .card{max-width:720px;margin:0 auto;background:#111827;border:1px solid #1f2937;border-radius:14px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    h1{font-size:22px;margin:0 0 12px}
+    code{background:#0b1220;border:1px solid #1e293b;padding:2px 6px;border-radius:6px}
+    button{margin-top:16px;padding:10px 14px;border-radius:10px;border:1px solid #334155;background:#1f2937;color:#e2e8f0;cursor:pointer}
+    button:hover{background:#273449}
+    .ok{color:#86efac}
+    .err{color:#fda4af}
+  </style>
+  <script>
+    async function disableSW() {
+      let logs = [];
+      try {
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (const r of regs) { await r.unregister(); logs.push('Unregistered: '+(r.scope||'')); }
+        }
+        if (window.caches && caches.keys) {
+          const keys = await caches.keys();
+          for (const k of keys) { await caches.delete(k); logs.push('Cache deleted: '+k); }
+        }
+        document.getElementById('status').textContent = 'تم التعطيل مؤقتًا.';
+        document.getElementById('logs').textContent = logs.join('\n');
+      } catch (e) {
+        document.getElementById('status').textContent = 'حصل خطأ';
+        document.getElementById('logs').textContent = (e && e.message) || e;
+      }
+    }
+    window.addEventListener('load', disableSW);
+  </script>
+</head>
+<body>
+  <div class="card">
+    <h1>تعطيل Service Worker مؤقتًا</h1>
+    <p>
+      هذه الصفحة تقوم <strong>بإلغاء تسجيل</strong> أي Service Worker وحذف الكاش للموقع الحالي.
+      افتحها مرة واحدة، ثم ارجع إلى صفحتك الرئيسية وسيتم تحميل آخر نسخة من الملفات.
+    </p>
+    <p id="status" class="ok">جاري التعطيل...</p>
+    <pre id="logs" style="white-space:pre-wrap"></pre>
+    <button onclick="location.href='.'">الرجوع للرئيسية</button>
+  </div>
+</body>
+</html>
