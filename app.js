@@ -1382,3 +1382,90 @@ function downloadMergedCsv(){
   if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', initSync); }
   else { initSync(); }
 })();
+/* ===== SYNC panel (فوق) مع الإعدادات الأصلية (تحت) – ثنائي الاتجاه ===== */
+(function(){
+  // IDs المتوقعة لأزرار اللوحة "فوق" (إذا مختلفة عندك غيّرها هون)
+  const panel = {
+    rsi:   document.getElementById('sigUseRsi'),
+    macd:  document.getElementById('sigUseMacd'),
+    ema:   document.getElementById('sigUseEma'),
+    stoch: document.getElementById('sigUseStoch'),
+    bb:    document.getElementById('sigUseBb'),
+  };
+
+  // دوال مساعدة للبحث عن سويتش/شيكبوكس "تحت" باللابل (عربي/إنجليزي)
+  function findOldByLabels(labels){
+    // حاول نلاقي input[type=checkbox] قريب من label يحتوي أي كلمة من labels
+    const allLabels = Array.from(document.querySelectorAll('label'));
+    for(const L of allLabels){
+      const t = (L.textContent || '').toLowerCase().trim();
+      if(labels.some(k => t.includes(k))) {
+        const chk = L.querySelector('input[type="checkbox"]');
+        if(chk) return chk;
+        // أحيانًا الشيكبوكس ما بيكون جوّا اللابل: جرّب الأخ/القريب
+        const sibChk = L.parentElement?.querySelector('input[type="checkbox"]');
+        if(sibChk) return sibChk;
+      }
+    }
+    // fallback: أي input باسمه أو id بيوحي
+    const candidates = Array.from(document.querySelectorAll('input[type="checkbox"]'));
+    return candidates.find(el=>{
+      const id  = (el.id||'').toLowerCase();
+      const nm  = (el.name||'').toLowerCase();
+      const lab = (el.closest('label')?.textContent||'').toLowerCase();
+      return labels.some(k => id.includes(k) || nm.includes(k) || lab.includes(k));
+    }) || null;
+  }
+
+  // خريطة الكلمات المفتاحية (جرّبت عربي/إنجليزي)
+  const mapOld = {
+    rsi:   findOldByLabels(['rsi','ار اس اي','آر اس آي']),
+    macd:  findOldByLabels(['macd','ماكد']),
+    ema:   findOldByLabels(['ema','ايما','إيما','متوسط','ema سريع','ema بطيء']),
+    stoch: findOldByLabels(['stochastic','stoch','ستوك','ستوكاستك']),
+    bb:    findOldByLabels(['bollinger','bb','بولنجر']),
+  };
+
+  // وظيفة صغيرة: إذا القيمة مختلفة، حدّث وبَعث change
+  function setIfDiff(el, val){
+    if(!el) return;
+    val = !!val;
+    if(!!el.checked !== val){
+      el.checked = val;
+      el.dispatchEvent(new Event('change',{bubbles:true}));
+      // بعض الفورمات بدها input كمان:
+      el.dispatchEvent(new Event('input',{bubbles:true}));
+    }
+  }
+
+  // مزامنة عنصرين بالجهتين
+  function bindTwoWay(panelEl, oldEl){
+    if(!panelEl || !oldEl) return;
+    // ابتدائي: نزّل حالة "تحت" على "فوق"
+    setIfDiff(panelEl, oldEl.checked);
+
+    // تحت → فوق
+    oldEl.addEventListener('change', ()=> setIfDiff(panelEl, oldEl.checked));
+
+    // فوق → تحت
+    panelEl.addEventListener('change', ()=> setIfDiff(oldEl, panelEl.checked));
+  }
+
+  // فعليًا نربط الكل
+  bindTwoWay(panel.rsi,   mapOld.rsi);
+  bindTwoWay(panel.macd,  mapOld.macd);
+  bindTwoWay(panel.ema,   mapOld.ema);
+  bindTwoWay(panel.stoch, mapOld.stoch);
+  bindTwoWay(panel.bb,    mapOld.bb);
+
+  // في حال الصفحة بتحمّل عناصر متأخرة/ديناميكية، خلّينا نراقب تغييرات الـDOM
+  const mo = new MutationObserver(()=> {
+    // إذا ظهر شي متأخر رجّع اربطه
+    bindTwoWay(panel.rsi,   mapOld.rsi   || (mapOld.rsi   = findOldByLabels(['rsi','ار اس اي'])));
+    bindTwoWay(panel.macd,  mapOld.macd  || (mapOld.macd  = findOldByLabels(['macd','ماكد'])));
+    bindTwoWay(panel.ema,   mapOld.ema   || (mapOld.ema   = findOldByLabels(['ema','متوسط'])));
+    bindTwoWay(panel.stoch, mapOld.stoch || (mapOld.stoch = findOldByLabels(['stochastic','stoch','ستوك'])));
+    bindTwoWay(panel.bb,    mapOld.bb    || (mapOld.bb    = findOldByLabels(['bollinger','bb','بولنجر'])));
+  });
+  mo.observe(document.documentElement,{subtree:true,childList:true});
+})();
