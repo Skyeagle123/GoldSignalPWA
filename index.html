@@ -121,6 +121,31 @@
       <div><label>المخاطرة % لكل صفقة</label><input id="riskPct" type="number" step="0.1" value="1.0"></div>
     </div>
     <div class="grid" style="margin-top:10px">
+     </div> 
+      <!-- داخل الكرت: "الإعدادات الفنية" -->
+<div class="grid" style="margin-top:10px">
+  <div>
+    <!-- Stochastic (موجود عندك) -->
+    <!-- ... -->
+  </div>
+
+  <div>
+    <!-- Bollinger Bands (موجود عندك) -->
+    <!-- ... -->
+  </div>
+
+  <div>
+    <!-- ✅ NEW: Manual / Auto controls -->
+    <label class="muted">
+      <input id="autoInd" type="checkbox">
+      Auto indicators (context-aware)
+    </label>
+    <div class="hint" style="margin:6px 0 8px">Manual toggles (used when Auto is OFF):</div>
+    <label class="muted"><input id="useRSI" type="checkbox" checked> Use RSI</label>
+    <label class="muted"><input id="useMACD" type="checkbox" checked> Use MACD</label>
+    <label class="muted"><input id="useEMA" type="checkbox" checked> Use EMA trend (12/26)</label>
+    </div> 
+  
       <div>
         <label class="muted"><input id="useStoch" type="checkbox"> تفعيل Stochastic</label>
         <div class="row">
@@ -145,30 +170,6 @@
   </label>
   <div class="hint">If ON: toggles Stoch/BB/MTF based on trend/volatility regime.</div>
    </div>
-    <!-- داخل الكرت: "الإعدادات الفنية" -->
-<div class="grid" style="margin-top:10px">
-  <div>
-    <!-- Stochastic (موجود عندك) -->
-    <!-- ... -->
-  </div>
-
-  <div>
-    <!-- Bollinger Bands (موجود عندك) -->
-    <!-- ... -->
-  </div>
-
-  <div>
-    <!-- ✅ NEW: Manual / Auto controls -->
-    <label class="muted">
-      <input id="autoInd" type="checkbox">
-      Auto indicators (context-aware)
-    </label>
-
-    <div class="hint" style="margin:6px 0 8px">Manual toggles (used when Auto is OFF):</div>
-    <label class="muted"><input id="useRSI" type="checkbox" checked> Use RSI</label>
-    <label class="muted"><input id="useMACD" type="checkbox" checked> Use MACD</label>
-    <label class="muted"><input id="useEMA" type="checkbox" checked> Use EMA trend (12/26)</label>
-    </div>
   </div>
   
   <div class="card">
