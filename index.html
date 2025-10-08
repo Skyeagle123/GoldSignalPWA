@@ -31,9 +31,11 @@
     canvas{width:100%;height:280px;background:#0b1220;border:1px solid #21314a;border-radius:12px}
     .hint{font-size:12px;color:#7c8aa0}
     .tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid #334155;color:#cbd5e1}
-    /* floating panel */
     #gsPanel{position:fixed;top:12px;right:12px;z-index:2147483647;display:flex;gap:8px}
     #gsPanel button{padding:8px 10px;border-radius:10px;background:#2b3a60;color:#e6eef9;border:1px solid #3a4f7a}
+    /* فواصل صغيرة داخل نفس الكرت */
+    .subhead{margin:8px 0 2px;font-size:14px;color:#cbd5e1}
+    .divider{height:1px;background:#1f2937;margin:10px 0}
   </style>
 </head>
 <body>
@@ -46,8 +48,7 @@
 
   <div class="card">
     <h3>إعدادات البيانات</h3>
-<!-- CSV controls (added) -->
-<div id="csvControls" style="margin:12px 0; display:flex; gap:10px; flex-wrap:wrap;"></div>
+    <div id="csvControls" style="margin:12px 0; display:flex; gap:10px; flex-wrap:wrap;"></div>
 
     <div class="grid">
       <div>
@@ -105,8 +106,11 @@
     <div class="hint">• الأزرق = دخول • الأخضر = TP1/TP2 • الأحمر = SL • الأبيض = السعر الحي (Live).</div>
   </div>
 
+  <!-- ========== الإعدادات الفنية ========== -->
   <div class="card">
     <h3>الإعدادات الفنية</h3>
+
+    <!-- أرقام أساسية (كما هي) -->
     <div class="grid">
       <div><label>EMA سريع</label><input id="emaFast" type="number" value="12" min="2"></div>
       <div><label>EMA بطيء</label><input id="emaSlow" type="number" value="26" min="3"></div>
@@ -120,38 +124,40 @@
       <div><label>حجم الحساب $</label><input id="acctSize" type="number" step="1" value="10000"></div>
       <div><label>المخاطرة % لكل صفقة</label><input id="riskPct" type="number" step="0.1" value="1.0"></div>
     </div>
-    <div class="grid" style="margin-top:10px">
-     </div> 
-      <!-- داخل الكرت: "الإعدادات الفنية" -->
-<div class="grid" style="margin-top:10px">
-  <div>
-    <!-- Stochastic (موجود عندك) -->
-    <!-- ... -->
-  </div>
 
-  <div>
-    <!-- Bollinger Bands (موجود عندك) -->
-    <!-- ... -->
-  </div>
- <div>
+    <div class="divider"></div>
+
+    <!-- المؤشرات (كلهم حد بعض بشكل مرتب) -->
+    <div class="subhead">المؤشرات</div>
+    <div class="grid">
+      <!-- RSI -->
+      <div>
+        <label class="muted"><input id="useRSI" type="checkbox" checked> تفعيل RSI</label>
+        <div class="hint">يعتمد على فترة RSI المحددة أعلاه.</div>
+      </div>
+
+      <!-- MACD -->
+      <div>
+        <label class="muted"><input id="useMACD" type="checkbox" checked> تفعيل MACD</label>
+        <div class="hint">يستعمل EMA(12/26) + Signal(9).</div>
+      </div>
+
+      <!-- EMA trend -->
+      <div>
+        <label class="muted"><input id="useEMA" type="checkbox" checked> تفعيل اتجاه EMA (12/26)</label>
+        <div class="hint">شراء إذا EMA سريع &gt; بطيء والعكس للبيع.</div>
+      </div>
+
+      <!-- Stochastic -->
+      <div>
         <label class="muted"><input id="useStoch" type="checkbox"> تفعيل Stochastic</label>
         <div class="row">
           <div style="flex:1"><label>%K</label><input id="stochK" type="number" value="14"></div>
           <div style="flex:1"><label>%D</label><input id="stochD" type="number" value="3"></div>
         </div>
-  <div>
-    <!-- ✅ NEW: Manual / Auto controls -->
-    <label class="muted">
-      <input id="autoInd" type="checkbox">
-      Auto indicators (context-aware)
-    </label>
-    <div class="hint" style="margin:6px 0 8px">Manual toggles (used when Auto is OFF):</div>
-    <label class="muted"><input id="useRSI" type="checkbox" checked> Use RSI</label>
-    <label class="muted"><input id="useMACD" type="checkbox" checked> Use MACD</label>
-    <label class="muted"><input id="useEMA" type="checkbox" checked> Use EMA trend (12/26)</label>
-    <div class="hint">If ON: toggles Stoch/BB/MTF based on trend/volatility regime.</div>
-    </div>  
       </div>
+
+      <!-- Bollinger -->
       <div>
         <label class="muted"><input id="useBB" type="checkbox"> تفعيل Bollinger Bands</label>
         <div class="row">
@@ -159,12 +165,33 @@
           <div style="flex:1"><label>STD</label><input id="bbStd" type="number" step="0.1" value="2"></div>
         </div>
       </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- الفلاتر + الزر الآلي -->
+    <div class="subhead">الفلاتر &amp; Auto</div>
+    <div class="grid">
       <div>
-        <label class="muted"><input id="toggleNyHours" type="checkbox"> تعطيل فلتر ساعات نيويورك</label>
-        <label class="muted"><input id="togglePivotFilter" type="checkbox"> تعطيل فلتر الاقتراب من Pivot</label>
+        <label class="muted"><input id="autoInd" type="checkbox"> Auto indicators (context-aware)</label>
+        <div class="hint">إذا مفعّل: يختار تلقائيًا المؤشرات بحسب الترند/التذبذب ويعلّم عليها.</div>
       </div>
       <div>
-  
+        <label class="muted"><input id="mtfConfirm" type="checkbox" checked> تأكيد متعدد الأطر (MTF)</label>
+        <div class="hint">تأكيد اتجاه 30د/60د لإشارات إطار 5د.</div>
+      </div>
+      <div>
+        <label class="muted"><input id="toggleNyHours" type="checkbox"> تعطيل فلتر ساعات نيويورك</label>
+        <div class="hint">إذا مفعّل: يسمح بالإشارات خارج ساعات NY.</div>
+      </div>
+      <div>
+        <label class="muted"><input id="togglePivotFilter" type="checkbox"> تعطيل فلتر الاقتراب من Pivot</label>
+        <div class="hint">إلغاء منع الدخول قرب مستويات Pivot.</div>
+      </div>
+    </div>
+  </div>
+  <!-- ========== /الإعدادات الفنية ========== -->
+
   <div class="card">
     <h3>الدعم والمقاومة (Pivot) • على يوم نيويورك</h3>
     <div class="grid">
@@ -259,6 +286,7 @@
   <input id="hiddenCsvFile" type="file" accept=".csv" style="display:none">
 </div>
 
-<script src="app.js?v=37"></script>
+<!-- لو بدك تكسر الكاش بعد رفع الصفحة، زِد رقم النسخة هنا -->
+<script src="app.js?v=38"></script>
 </body>
 </html>
