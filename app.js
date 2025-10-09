@@ -813,7 +813,7 @@ function wireExportBtn() {
     document.getElementById('writeExportBtn') ||
     document.getElementById('export-merged') ||
     document.querySelector('[data-action="export-merged"], .js-export-merged');
-
+  }
   if (!btn) {
     console.warn('[export] زر التصدير غير موجود حالياً');
     return;
