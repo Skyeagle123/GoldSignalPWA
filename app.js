@@ -806,27 +806,25 @@ function downloadMergedCsv(){
   URL.revokeObjectURL(url);
 }
 
- // دالة ربط زرّ التصدير بالوظيفة downloadMergedCsv
+// ربط زر التصدير بالوظيفة downloadMergedCsv
 function wireExportBtn() {
-  // جرّب أكثر من محدِّد ليتوافق مع أسمائك
   const btn =
     document.getElementById('writeExportBtn') ||
     document.getElementById('export-merged') ||
     document.querySelector('[data-action="export-merged"], .js-export-merged');
-  }
+
   if (!btn) {
     console.warn('[export] زر التصدير غير موجود حالياً');
     return;
   }
 
-  // لا تكرّر الربط إذا كان مربوط سابقاً
   if (btn.__gsBound) return;
   btn.__gsBound = true;
 
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     try {
-      downloadMergedCsv();   // ← الدالة الموجودة عندك للتصدير
+      downloadMergedCsv();
     } catch (err) {
       console.error('[export] failed:', err);
       alert('تعذّر إنشاء ملف CSV. حاول مجدداً.');
@@ -834,15 +832,15 @@ function wireExportBtn() {
   });
 }
 
-// اربط بعد تحميل الـDOM أو فوراً إن كان جاهزاً
+// اربط الزر بعد تحميل الصفحة
 if (document.readyState !== 'loading') {
   wireExportBtn();
 } else {
   document.addEventListener('DOMContentLoaded', wireExportBtn);
 }
 
-// إبراز الدالة للنافذة لو بدك تناديها من أي مكان آخر
-window.downloadMergedCsv = downloadMergedCsv;
+// إتاحة الدالة للتنفيذ من أماكن أخرى
+window.downloadMergedCsv = downloadMergedCsv; 
  
 
 
