@@ -1,5 +1,5 @@
 <!-- سمّه مثلاً: gs-worker-bridge.js وأضِفه بعد app.js -->
-<script>
+
 (() => {
   // عدّل فقط هذا العنوان إذا تغيّر
   const WORKER_URL = "https://workerjs.samer-mourtada.workers.dev/alert";
@@ -176,4 +176,4 @@
   mo.observe(box, { childList:true, subtree:true, characterData:true });
 
 })();
-</script>
+
