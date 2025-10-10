@@ -1,230 +1,180 @@
-/*  GoldSignals → Worker bridge (مُحدّث وآمن)  */
+/* GoldSignals → Worker bridge (مرّة لكل شمعة) */
 (function () {
-  // ⚠️ ضع رابط الوركر الخاص فيك:
-  const WORKER_URL = "https://workerjs.samer-mourtada.workers.dev";
+  // ⛳️ غيّر رابط الوركر إذا لزم
+  const WORKER_URL = "https://workerjs.samer-mourtada.workers.dev/alert";
 
-  /* ============ أدوات مساعدة ============ */
+  // ابحث عن صندوق النص اللي فيه الملخص/النصيحة
+  const box =
+    document.getElementById("adviceText") ||
+    document.querySelector("#adviceText") ||
+    document.querySelector("main .wrap") ||
+    document.querySelector("main");
 
-  // تحويل أرقام عربية/فواصل إلى رقم عشري عادي
-  function normalizeNumber(s) {
-    if (s == null) return null;
-    let t = String(s)
-      .replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d))         // أرقام عربية → 0..9
-      .replace(/[^\d.,\-]/g, "");                                // احذف أي رموز أخرى
-    // لو عندي فاصلتين: اعتبر الأخيرة فاصلة عشرية وامسح الباقي
-    const lastComma = t.lastIndexOf(",");
-    const lastDot   = t.lastIndexOf(".");
-    if (lastComma > lastDot) { // الفاصلة آخر شي → اعتبرها عشرية والباقي آلاف
-      t = t.replace(/\./g, "").replace(/,/g, (m, i, str) => (i === lastComma ? "." : ""));
-    } else {
-      t = t.replace(/,/g, ""); // الفواصل آلاف → امسحها
-    }
-    const n = parseFloat(t);
-    return Number.isFinite(n) ? n : null;
+  if (!box) {
+    console.warn("[GS] box not found — الجسر مش شاف الصندوق.");
+    return;
   }
 
-  function tfToMinutes(tf) {
-    if (!tf) return 15;
-    if (typeof tf === "number") return tf;
-    const m = String(tf).trim().toLowerCase().match(/^(\d+)\s*([mh])$/);
-    if (!m) return 15;
-    const v = parseInt(m[1], 10);
-    return m[2] === "h" ? v * 60 : v;
-  }
-
-  // مفتاح الشمعة الحالية (لتجنّب التكرار)
-  function currentCandleKey(tfStr, more = "") {
-    const mins = tfToMinutes(tfStr || window.currentTF || "15m");
-    const bucket = Math.floor(Date.now() / (mins * 60 * 1000));
-    return `${mins}|${bucket}|${more || ""}`;
-  }
-
-  // نخزّن آخر إرسال كي لا نكرّر بنفس الشمعة
-  const LS_KEY = "gs_last_sent_key";
-  function sentThisCandle(key) {
-    try {
-      const last = localStorage.getItem(LS_KEY);
-      return last === key;
-    } catch { return false; }
-  }
-  function markSent(key) {
-    try { localStorage.setItem(LS_KEY, key); } catch {}
-  }
-
-  // هل النص يحمل نصيحة كاملة؟
-  function hasCompleteAdvice(text) {
-    const t = (text || "").toLowerCase();
-    const hasEntry = /entry|سعر الدخول|دخول/.test(t);
-    const hasSL    = /\bsl\b|وقف الخسارة|وقف/.test(t);
-    const hasTP    = /\btp1\b|\btp2\b|tp1|tp2/.test(t);
-    return hasEntry && hasSL && hasTP;
-  }
-
-  // يحاول استخراج side/tf/entry/tp1/tp2/sl من النص (عربي/إنكليزي)
-  function parseAdviceFromText(text) {
-    if (!text) return null;
-    const t = text.replace(/\s+/g, " ");
-
-    // side
-    let side = /sell|بيع/i.test(t) ? "SELL" : /buy|شراء/i.test(t) ? "BUY" : null;
-
-    // tf (مثل 5m / 30m / 1h)
-    const tfMatch = t.match(/\b(\d+)\s*(m|h)\b/i);
-    const tf = tfMatch ? `${tfMatch[1]}${tfMatch[2].toLowerCase()}` : (window.currentTF || "15m");
-
-    // أرقام: نجرب أنماط شائعة
-    // Entry:
-    let entry = null;
-    let m;
-    m = t.match(/(?:entry|سعر الدخول|دخول)\D{0,6}([0-9.,٠-٩\-]+)/i);
-    if (m) entry = normalizeNumber(m[1]);
-
-    // SL:
-    let sl = null;
-    m = t.match(/\b(?:sl|وقف(?:\s*الخسارة)?)\D{0,6}([0-9.,٠-٩\-]+)/i);
-    if (m) sl = normalizeNumber(m[1]);
-
-    // TP1:
-    let tp1 = null;
-    m = t.match(/\b(?:tp1)\D{0,6}([0-9.,٠-٩\-]+)/i);
-    if (m) tp1 = normalizeNumber(m[1]);
-
-    // TP2:
-    let tp2 = null;
-    m = t.match(/\b(?:tp2)\D{0,6}([0-9.,٠-٩\-]+)/i);
-    if (m) tp2 = normalizeNumber(m[1]);
-
-    return { side, tf, entry, tp1, tp2, sl };
-  }
-
-  // عنصر النص الذي تُكتب فيه النصيحة
-  function findAdviceElement() {
-    return (
-      document.getElementById("adviceText") ||
-      window.elAdviceText ||
-      document.querySelector("#adviceText, .advice, [data-advice], main .wrap, main")
+  // helper: تحويل أرقام لنظيفة
+  const num = (v) => {
+    if (v == null) return null;
+    const n = Number(
+      String(v).replace(/[^\d.\-]+/g, "").replace(/(\.\d{2})\d+$/, "$1")
     );
+    return isFinite(n) ? n : null;
+  };
+
+  // اكتشاف الإطار الزمني (عربي/إنجليزي)
+  function parseTF(text) {
+    // أمثلة: "TF: 15m" أو "الإطار: 30 دقيقة"
+    const en = text.match(/TF\s*:\s*(\d+)\s*([mh])/i);
+    if (en) {
+      const n = Number(en[1]);
+      const u = en[2].toLowerCase();
+      const mins = u === "h" ? n * 60 : n;
+      return { tfLabel: `${mins}${u === "h" ? "h" : "m"}`, tfMins: mins };
+    }
+    const ar = text.match(/الإطار\s*:\s*(\d+)\s*دق(?:يقة|ائق)/);
+    if (ar) {
+      const mins = Number(ar[1]);
+      return { tfLabel: `${mins}m`, tfMins: mins };
+    }
+    // fallback: إذا فيه window.currentTFMinutes
+    const tfGuess =
+      window.currentTFMinutes || window.currentTF || window.currentTf;
+    if (tfGuess) {
+      const mins = Number(tfGuess);
+      if (isFinite(mins) && mins > 0) return { tfLabel: `${mins}m`, tfMins: mins };
+    }
+    // افتراضي: 15m
+    return { tfLabel: "15m", tfMins: 15 };
   }
 
-  // إرسال للوركر مع قفل "مرّة لكل شمعة"
-  async function sendOncePerCandle(payload) {
-    const key = currentCandleKey(payload.tf, `${payload.side}|${payload.entry}|${payload.sl}|${payload.tp1}|${payload.tp2}`);
-    if (sentThisCandle(key)) {
-      console.log("[GS] skipped (already sent this candle).");
-      return false;
-    }
-    const url = WORKER_URL.replace(/\/+$/, "") + "/alert";
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    let ok = res.ok;
-    try {
-      const j = await res.json();
-      ok = ok && j && j.ok !== false;
-      console.log("[GS] worker reply:", j);
-    } catch {
-      console.log("[GS] worker status:", res.status);
-    }
-    if (ok) markSent(key);
-    return ok;
+  // اكتشاف إذا النصيحة مرفوضة بالفلتر
+  function isRejected(text) {
+    return /مرفوضة|مرفوض|فلتر|rejected/i.test(text);
   }
 
-  // يرسل إن وُجد نص كامل
-  async function trySend(text) {
+  // استخراج الحقول: side/entry/tp1/tp2/sl
+  function parseAdvice(text) {
+    // side
+    let side = null;
+    if (/BUY/i.test(text) || /شراء/.test(text)) side = "BUY";
+    if (/SELL/i.test(text) || /بيع/.test(text)) side = "SELL";
+
+    // entry: نحاول عربي/إنجليزي
+    const mEntry =
+      text.match(/Entry\s*:\s*([0-9.,]+)/i) ||
+      text.match(/سعر الدخول\s*[:：]\s*([0-9.,]+)/);
+    const entry = mEntry ? num(mEntry[1]) : null;
+
+    // TP1 / TP2
+    const mTp1 =
+      text.match(/TP1\s*:\s*([0-9.,]+)/i) || text.match(/TP1\s*[:：]\s*([0-9.,]+)/i);
+    const mTp2 =
+      text.match(/TP2\s*:\s*([0-9.,]+)/i) || text.match(/TP2\s*[:：]\s*([0-9.,]+)/i);
+    const tp1 = mTp1 ? num(mTp1[1]) : null;
+    const tp2 = mTp2 ? num(mTp2[1]) : null;
+
+    // SL
+    const mSl =
+      text.match(/SL\s*:\s*([0-9.,]+)/i) || text.match(/وقف الخسارة\s*[:：]\s*([0-9.,]+)/);
+    const sl = mSl ? num(mSl[1]) : null;
+
+    // TF
+    const { tfLabel, tfMins } = parseTF(text);
+
+    return {
+      side,
+      tf: tfLabel,
+      tfMins,
+      entry,
+      tp1,
+      tp2,
+      sl,
+      filtersRejected: isRejected(text),
+    };
+  }
+
+  // مرّة واحدة لكل شمعة: نحسب الـbucket من الزمن الحالي و tf
+  let lastBucketKey = null;
+
+  // لتخفيف الوميض، نعمل debounce صغير بعد تغيّر النص
+  let debounceTimer = null;
+  const DEBOUNCE_MS = 1200;
+
+  // إرسال فعلي للوركر
+  async function sendAdvice(payload) {
     try {
-      if (!hasCompleteAdvice(text)) {
-        console.warn("[GS] incomplete advice → waiting …");
-        return false;
-      }
-      const parsed = parseAdviceFromText(text);
-      if (!parsed || !parsed.side) {
-        console.warn("[GS] parsing failed.");
-        return false;
-      }
-      const payload = {
-        side:  parsed.side || "BUY",
-        tf:    parsed.tf   || (window.currentTF || "15m"),
-        entry: parsed.entry ?? null,
-        tp1:   parsed.tp1   ?? null,
-        tp2:   parsed.tp2   ?? null,
-        sl:    parsed.sl    ?? null,
-        price: parsed.entry ?? null,
-        filtersRejected: false,
-        raw: text,
-        ts: Date.now(),
-      };
-      console.log("[GS] sending:", payload);
-      return await sendOncePerCandle(payload);
+      const r = await fetch(WORKER_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json().catch(() => ({}));
+      console.log("[GS] sent:", payload, j);
     } catch (e) {
-      console.error("[GS] trySend error:", e);
-      return false;
+      console.error("[GS] send failed:", e);
     }
   }
 
-  // مراقبة الصندوق مع تهدئة (debounce)
-  function startWatcher() {
-    if (startWatcher.__wired) return;
-    startWatcher.__wired = true;
+  function trySend(text) {
+    const p = parseAdvice(text);
+    console.log("[GS] parsed:", p);
 
-    const box = findAdviceElement();
-    if (!box) {
-      console.warn("[GS] advice element not found.");
+    // شروط الإرسال:
+    // 1) مش مرفوضة بالفلتر
+    // 2) فيه side واضح
+    // 3) فيه Entry (ما منرسل إذا مش موجود)
+    if (p.filtersRejected || !p.side || p.entry == null) {
+      console.warn("[GS] نصيحة غير مرسلة (مرفوضة/ناقصة).");
       return;
     }
 
-    let lastText = (box.innerText || "").trim();
-    console.log("[GS] watcher started.");
-    let timer = null;
+    // حسبة الشمعة الحالية بالـminutes
+    const bucket =
+      p.side +
+      "|" +
+      p.tf +
+      "|" +
+      Math.floor(Date.now() / (p.tfMins * 60 * 1000));
 
-    // محاولة أولى لو النص جاهز
-    if (lastText && hasCompleteAdvice(lastText)) trySend(lastText);
+    if (bucket === lastBucketKey) {
+      // تم الإرسال لهذه الشمعة — تجاهل
+      return;
+    }
 
-    const scheduleCheck = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        const txt = (box.innerText || "").trim();
-        // حتى لو ما تغيّر — إذا صار كامل بعد لحظات نبعت
-        lastText = txt || lastText || "";
-        if (hasCompleteAdvice(lastText)) {
-          trySend(lastText);
-        } else {
-          console.log("[GS] waiting for full advice …");
-        }
-      }, 900); // تهدئة لتجنّب الطشّ أثناء التحديث
-    };
+    lastBucketKey = bucket;
 
-    const mo = new MutationObserver(scheduleCheck);
-    mo.observe(box, { childList: true, subtree: true, characterData: true });
-    window.addEventListener("resize", scheduleCheck, { passive: true });
-  }
-
-  /* ============ واجهات عامة ============ */
-
-  // لو بدك تبعته يدويّاً من كودك:
-  window.gsNotifyIfRealSignal = async function (adviceObj) {
-    // يقبل كائن جاهز بنفس الحقول
     const payload = {
-      side:  adviceObj.side || "BUY",
-      tf:    adviceObj.tf   || (window.currentTF || "15m"),
-      entry: adviceObj.entry ?? null,
-      tp1:   adviceObj.tp1   ?? null,
-      tp2:   adviceObj.tp2   ?? null,
-      sl:    adviceObj.sl    ?? null,
-      price: adviceObj.price ?? adviceObj.entry ?? null,
-      filtersRejected: !!adviceObj.filtersRejected,
-      raw: adviceObj.raw || "",
-      ts: Date.now(),
+      side: p.side,
+      tf: p.tf,
+      entry: p.entry,
+      tp1: p.tp1,
+      tp2: p.tp2,
+      sl: p.sl,
+      filtersRejected: false,
     };
-    console.log("[GS] manual send:", payload);
-    return await sendOncePerCandle(payload);
-  };
 
-  // تشغيل تلقائي بعد تحميل الصفحة
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", startWatcher, { once: true });
-  } else {
-    startWatcher();
+    sendAdvice(payload);
   }
+
+  // مراقب تغيّر نص الصندوق
+  let lastText = "";
+  function onChange() {
+    const txt = box.innerText || "";
+    if (txt === lastText) return;
+    lastText = txt;
+
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => trySend(txt), DEBOUNCE_MS);
+  }
+
+  // أرسل فورًا إذا في نصيحة ظاهرة عند التحميل
+  onChange();
+
+  const mo = new MutationObserver(onChange);
+  mo.observe(box, { childList: true, subtree: true, characterData: true });
+
+  console.log("[GS] watcher started.");
 })();
