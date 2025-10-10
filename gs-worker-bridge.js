@@ -1,206 +1,157 @@
 /* GoldSignals → Worker bridge (صغير وآمن) */
 (function () {
-  'use strict';
-
-  // ⚠️ عدّل هذا لو تغيّر رابط الووركر الخاص بك
+  // 👇 ضع رابط الWorker تبعك (مسار /alert)
   const WORKER_URL = "https://workerjs.samer-mourtada.workers.dev/alert";
 
-  // ====== منع التكرار: مرّة واحدة لكل شمعة ======
-  // key = `${side}-${tfMin}` → value = candleId
-  const GS_LAST_SENT = Object.create(null);
-
-  function candleId(tfMin, now = Date.now()) {
-    const ms = tfMin * 60 * 1000;
-    return Math.floor(now / ms);
+  // ——— أدوات قراءة أرقام تتحمّل العربي والفواصل ———
+  function cleanNum(s) {
+    if (s == null) return null;
+    return s.replace(/[,\u060C\s]/g, ""); // يشيل , و ، ومسافات
   }
-
-  // ====== أدوات مساعدة ======
-  function toNumber(x) {
-    if (x == null) return null;
-    const n = Number(String(x).replace(/[^\d.+-]/g, ''));
+  function toFloat(s) {
+    const n = parseFloat(cleanNum(String(s)));
     return Number.isFinite(n) ? n : null;
   }
-
-  function tfToMin(tf) {
-    if (!tf) return null;
-    const m = String(tf).match(/(\d+)\s*(m|h|min)/i);
-    if (!m) return toNumber(tf);
-    const v = Number(m[1] || 0);
-    return (m[2].toLowerCase() === 'h') ? v * 60 : v;
+  function pickNumber(re, text) {
+    const m = text.match(re);
+    return m ? toFloat(m[1]) : null;
+  }
+  function pickTwoNumbers(re, text) {
+    const m = text.match(re);
+    if (!m) return [null, null];
+    return [toFloat(m[1]), toFloat(m[2])];
   }
 
-  // يبني الرسالة النهائية
-  function buildMessage(payload) {
-    const lines = [
-      "🔔 GoldSignals",
-      `Side: ${payload.side}`,
-      `TF: ${payload.tf}`,
-      `Entry: ${payload.entry}`
-    ];
-    if (payload.tp1 != null) lines.push(`TP1: ${payload.tp1}`);
-    if (payload.tp2 != null) lines.push(`TP2: ${payload.tp2}`);
-    if (payload.sl  != null) lines.push(`SL: ${payload.sl}`);
-    return lines.join("\n");
+  // ——— محاولة التقاط TF من النص (اختياري) ———
+  function pickTF(text) {
+    // أمثلة: "الإطار: 30 دقيقة" / "TF: 15m" / "ساعة"
+    const mMin = text.match(/(?:الإطار|TF)\s*[:：]?\s*(\d+)\s*(?:دقيقة|min|m)\b/i);
+    if (mMin) return `${mMin[1]}m`;
+    const mHour = text.match(/(?:الإطار|TF)\s*[:：]?\s*(\d+)\s*(?:ساعة|hour|h)\b/i);
+    if (mHour) return `${mHour[1]}h`;
+    return null;
   }
 
-  // يرسل للـ Worker
-  async function sendToWorker(payload) {
-    // استنتاج tf بالدقائق و منعه من التكرار لكل شمعة
-    const tfMin = tfToMin(payload.tf) || tfToMin(window.currentTF) || 15;
-    const key   = `${payload.side}-${tfMin}`;
-    const cid   = candleId(tfMin);
-
-    if (GS_LAST_SENT[key] === cid) {
-      console.log("[GS] skipped (same candle)", key, cid);
-      return { ok:false, skipped:true };
-    }
-
-    GS_LAST_SENT[key] = cid;
-
-    try {
-      const res = await fetch(WORKER_URL, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      const body = await res.json().catch(() => ({}));
-      console.log("[GS] worker response:", { ok: res.ok, status: res.status, body });
-      return { ok: res.ok, status: res.status, body };
-    } catch (err) {
-      console.error("[GS] worker error:", err);
-      return { ok:false, error: String(err) };
-    }
-  }
-
-  // ====== API خارجي لإرسال إشارة جاهزة ======
-  // نتركه عالمي ليقدر app.js يناديه مباشرة
-  window.gsNotifyIfRealSignal = async function (advice) {
-    try {
-      if (!advice || !advice.side) {
-        console.warn("[GS] نصيحة غير صالحة/غير موجودة (لن يتم الإرسال).");
-        return;
-      }
-      const side = String(advice.side).toUpperCase();
-      if (side !== 'BUY' && side !== 'SELL') {
-        console.warn("[GS] side غير صالح:", advice.side);
-        return;
-      }
-      // إذا كان مرفوض بالفلاتر لا ترسل
-      if (advice.filtersRejected === true) {
-        console.log("[GS] مرفوضة بالفلاتر (لن تُرسل).");
-        return;
-      }
-
-      const payload = {
-        side,
-        tf: advice.tf || window.currentTF || "15m",
-        entry: toNumber(advice.entry ?? advice.entryPrice ?? advice.price),
-        tp1: toNumber(advice.tp1),
-        tp2: toNumber(advice.tp2),
-        sl:  toNumber(advice.sl),
-        price: toNumber(advice.price),
-        filtersRejected: !!advice.filtersRejected
-      };
-
-      console.log("[GS] sending:", payload);
-      const r = await sendToWorker(payload);
-
-      if (r.ok) {
-        console.log("[GS] sent:", payload);
-      } else if (r.skipped) {
-        console.log("[GS] skipped (already sent this candle).");
-      } else {
-        console.warn("[GS] failed to send:", r);
-      }
-    } catch (e) {
-      console.error("[GS] notify error:", e);
-    }
-  };
-
-  // ====== اختيارية: مراقبة نصّ الإشارة من الصفحة نفسها ======
-  // نحاول إيجاد عنصر يحتوي النصّ؛ إذا غير موجود نكتفي بالدالة أعلاه.
-  function findAdviceBox() {
-    return (
-      document.getElementById('adviceText') ||
-      window.elAdviceText ||
-      document.querySelector('#adviceText, .advice, .signal, .wrap main') ||
-      null
-    );
-  }
-
-  function parseAdviceFromText(text) {
-    // تجاهل الحالات غير الحقيقية
+  // ——— تحويل رسالة نصيحة إلى Payload ———
+  function payloadFromAdviceText(text) {
     if (!text) return null;
-    if (text.includes("لا توجد نصيحة") || text.includes("مرفوض")) return null;
 
-    // استخرج BUY/SELL
-    const side = /شراء|BUY|بيع|SELL/i.test(text)
-      ? (/(بيع|SELL)/i.test(text) ? "SELL" : "BUY")
-      : null;
+    // تجاهل حالات “لا توجد نصيحة / مرفوضة بالفلاتر”:
+    if (/(لا توجد نصيحة|مرفوضة\s*بالفلاتر|filtersRejected\s*:\s*true)/i.test(text)) {
+      return null;
+    }
+
+    // Side
+    let side = null;
+    if (/شراء|BUY/i.test(text)) side = "BUY";
+    else if (/بيع|SELL/i.test(text)) side = "SELL";
+
+    // TF من التطبيق أو من النص أو افتراضي
+    const tf = (window.currentTF && String(window.currentTF)) || pickTF(text) || "15m";
+
+    // Entry
+    const entry =
+      pickNumber(/(?:سعر\s*الدخول|Entry)\s*[:：]\s*([0-9.,\u060C]+)/i, text) ??
+      pickNumber(/Entry\s*[:：]\s*([0-9.,\u060C]+)/i, text);
+
+    // TP1/TP2
+    // عربي: "الأهداف: 3987.63 / 4008.14" — إنكليزي: "TP1: 3987.63, TP2: 4008.14"
+    let [tp1, tp2] =
+      pickTwoNumbers(
+        /(?:الأهداف|Targets?)\s*[:：]\s*([0-9.,\u060C]+)\s*[\/,،]\s*([0-9.,\u060C]+)/i,
+        text
+      ) || [];
+    if (tp1 == null) {
+      tp1 = pickNumber(/TP1\s*[:：]\s*([0-9.,\u060C]+)/i, text);
+    }
+    if (tp2 == null) {
+      tp2 = pickNumber(/TP2\s*[:：]\s*([0-9.,\u060C]+)/i, text);
+    }
+
+    // SL
+    const sl =
+      pickNumber(/(?:وقف\s*الخسارة|SL)\s*[:：]\s*([0-9.,\u060C]+)/i, text) ??
+      pickNumber(/SL\s*[:：]\s*([0-9.,\u060C]+)/i, text);
+
+    // سعر حي إن وجِد
+    const price =
+      (typeof window.lastLivePrice === "number" && window.lastLivePrice) || null;
 
     if (!side) return null;
 
-    // أرقام: TF, Entry, TP1, TP2, SL
-    const tfm  = text.match(/(\d+)\s*(?:m|د|دقيقة|h|ساعة)/i);
-    const em   = text.match(/دخول[:\s]?\s*([\d.]+)/i);
-    const tp1m = text.match(/TP1[:\s]?\s*([\d.]+)/i);
-    const tp2m = text.match(/TP2[:\s]?\s*([\d.]+)/i);
-    const slm  = text.match(/SL[:\s]?\s*([\d.]+)/i);
-
-    const tf = tfm ? (tfm[2] ? `${tfm[1]}${tfm[2]}` : `${tfm[1]}m`) : (window.currentTF || "15m");
-
-    return {
-      side,
-      tf,
-      entry: toNumber(em && em[1]),
-      tp1:  toNumber(tp1m && tp1m[1]),
-      tp2:  toNumber(tp2m && tp2m[1]),
-      sl:   toNumber(slm && slm[1]),
-      filtersRejected: /مرفوض/i.test(text) ? true : false
-    };
+    return { side, tf, entry, tp1, tp2, sl, price, filtersRejected: false };
   }
 
-  function startWatcher() {
-    const box = findAdviceBox();
-    if (!box) {
-      console.warn("[GS] لم أجد عنصر نصّ الإشارة؛ استخدم window.gsNotifyIfRealSignal(..) يدويًا من التطبيق.");
+  // ——— إرسال للWorker ———
+  function sendToWorker(payload) {
+    return fetch(WORKER_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then((r) => r.json().catch(() => ({})))
+      .then((j) => {
+        console.log("[GS] sent:", payload, j && j.ok ? j : "");
+        return j;
+      })
+      .catch((e) => console.error("[GS] send error:", e));
+  }
+
+  // ——— مرّة واحدة لكل شمعة (لا نكرّر مع تغيّر السعر فقط) ———
+  const sentKeys = new Set();
+  function makeKey(p) {
+    return [
+      p.side || "",
+      p.tf || "",
+      p.entry ?? "",
+      p.tp1 ?? "",
+      p.tp2 ?? "",
+      p.sl ?? "",
+    ].join("|");
+  }
+
+  function trySend(text) {
+    const p = payloadFromAdviceText(text);
+    if (!p) {
+      console.warn("[GS] نصيحة غير مُرسلة (مرفوضة/غير موجودة).");
       return;
     }
-
-    console.log("[GS] watcher started.");
-    let lastText = "";
-
-    const trySend = (txt) => {
-      const advice = parseAdviceFromText(txt);
-      if (!advice) {
-        console.warn("[GS] نصيحة غير مُرسلة (مرفوضة/غير موجودة).");
-        return;
-      }
-      window.gsNotifyIfRealSignal(advice);
-    };
-
-    // إرسال أولي إذا كان النصّ ظاهر
-    const initial = (box.innerText || "").trim();
-    if (initial) {
-      lastText = initial;
-      trySend(initial);
+    const key = makeKey(p);
+    if (sentKeys.has(key)) {
+      // نفس الشمعة عملياً (نفس القيم الأساسية)
+      return;
     }
-
-    const mo = new MutationObserver(() => {
-      const txt = (box.innerText || "").trim();
-      if (txt && txt !== lastText) {
-        lastText = txt;
-        trySend(txt);
-      }
-    });
-
-    mo.observe(box, { childList: true, subtree: true, characterData: true });
+    sentKeys.add(key);
+    sendToWorker(p);
   }
 
-  // ابدأ المراقبة بعد تحميل DOM
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", startWatcher);
+  // ——— إيجاد عنصر النصيحة ومراقبته ———
+  const box =
+    document.getElementById("adviceText") ||
+    window.elAdviceText ||
+    document.querySelector("#adviceText, .advice, .signal, main .wrap") ||
+    document.body;
+
+  if (!box) {
+    console.warn("[GS] advice box not found, watching <main>.");
   } else {
-    startWatcher();
+    console.log("[GS] watching:", box);
   }
+
+  // أرسل أوليًّا إن كانت النصيحة ظاهرة
+  let lastText = (box.innerText || "").trim();
+  trySend(lastText);
+
+  // راقب أي تغيير بالنص
+  const mo = new MutationObserver(() => {
+    const txt = (box.innerText || "").trim();
+    if (txt !== lastText) {
+      lastText = txt;
+      trySend(txt);
+    }
+  });
+  mo.observe(box, { childList: true, subtree: true, characterData: true });
+
+  console.log("[GS] watcher started.");
 })();
+```0
