@@ -726,16 +726,32 @@ setInterval(refreshLive, LIVE_REFRESH_SEC*1000);
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   }
 
-  // 4) wire button
-  function wireBtn(){
-    const btn = document.getElementById('btnExportCsv');
-    if(btn && !btn.__wired){
-      btn.addEventListener('click', downloadMergedCsv);
-      btn.__wired = true;
-    }
+// 4) wire button (unified)
+function wireExportBtn() {
+  const btn =
+    document.getElementById('writeExportBtn') ||   // لو عامل زر باسم تاني
+    document.getElementById('btnExportCsv')   ||   // زر التصدير الحالي
+    document.querySelector('[data-action="export-merged"], .js-export-merged');
+
+  if (!btn) {
+    console.warn('[export] زر التصدير غير موجود حالياً');
+    return;
   }
-  document.addEventListener('DOMContentLoaded', wireBtn);
-  wireBtn();
+  if (btn.__gsBound) return; // منع الربط المكرر
+  btn.__gsBound = true;
+
+  btn.addEventListener('click', (e) => {
+    e.preventDefault?.();
+    try { downloadMergedCsv(); }
+    catch (err) {
+      console.error('downloadMergedCsv failed:', err);
+      alert('حدث خطأ أثناء إنشاء ملف CSV.');
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', wireExportBtn);
+wireExportBtn();  
 })();
 /* === Export merged CSV (drop-in) === */
 (function () {
