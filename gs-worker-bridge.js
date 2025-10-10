@@ -1,44 +1,84 @@
-/* GoldSignals → Worker bridge (صغير وآمن) */
+/* GoldSignals → Worker bridge (منع التكرار + رسالة واحدة منظّمة) */
 (function () {
-  // ⚠️ ضع رابط الوركر الخاص فيك:
-  const WORKER_URL = "https://workerjs.samer-mourtada.workers.dev/alert";
+  // ضع رابط الـWorker الخاص بك هنا
+  const WORKER_URL = "https://workerjs.samer-mourtada.workers.dev";
 
-  function notifyFromAdviceText(text) {
+  // سجل بسيط لمنع تكرار نفس الإشارة لفترة محددة
+  const lastSent = new Map();           // key = tf|side|entryRounded
+  const DEDUP_TTL_MS = 15 * 60 * 1000;  // مهلة 15 دقيقة (غيّرها إذا بدك)
+
+  function shouldSendOnce(tf, side, entry) {
+    // نوحد قيمة الدخول لتقليل حساسية التغيير (تقريب على خانتين)
+    const entryRounded =
+      entry != null ? Math.round(Number(entry) * 100) / 100 : "NA";
+    const key = `${tf}|${String(side).toUpperCase()}|${entryRounded}`;
+    const now = Date.now();
+    const prev = lastSent.get(key);
+
+    // إذا أرسِلَت خلال المهلة → لا ترسل
+    if (prev && now - prev < DEDUP_TTL_MS) return false;
+
+    // تنظيف مفاتيح قديمة لنفس (tf|side) لتفادي التضخم
+    for (const k of lastSent.keys()) {
+      if (k.startsWith(`${tf}|${String(side).toUpperCase()}|`)) lastSent.delete(k);
+    }
+    lastSent.set(key, now);
+    return true;
+  }
+
+  /**
+   * استدعِ هذه الدالة عند توليد نصيحة نهائية:
+   * window.gsNotifyIfRealSignal(adviceObject);
+   *
+   * المتوقّع داخل adviceObject (استعمل ما يتوفر لديك):
+   * {
+   *   side: "BUY"|"SELL",
+   *   tf: "5m"|"15m"|...,
+   *   entry / entryPrice / entry_point: Number,
+   *   tp1, tp2, sl: Number,
+   *   price: Number (السعر الحي - اختياري),
+   *   filtersRejected: Boolean
+   * }
+   */
+  async function notifyIfRealSignal(advice) {
     try {
-      if (!text) return;
+      if (!advice || !advice.side) return;
+      const side = String(advice.side).toUpperCase();
+      if (side !== "BUY" && side !== "SELL") return;
 
-      // تجاهل الحالات غير الحقيقية
-      if (text.includes("لا توجد نصيحة") || text.includes("الملخص") || text.includes("مرفوض")) return;
+      // تجاهل الإشارات المرفوضة بالفلاتر
+      if (advice.filtersRejected === true) return;
 
-      // اكتشاف الإشارة الفعلية (شراء/بيع)
-      const m = text.match(/الإشارة:\s*(شراء|بيع)/);
-      if (!m) return;
+      // اجلب الحقول إن وُجدت
+      const tf    = advice.tf || window.currentTF || "";
+      const entry = coalesce(advice.entry, advice.entryPrice, advice.entry_point, null);
+      const tp1   = coalesce(advice.tp1, advice.takeProfit1, null);
+      const tp2   = coalesce(advice.tp2, advice.takeProfit2, null);
+      const sl    = coalesce(advice.sl,  advice.stopLoss,   null);
+      const price = coalesce(advice.price, window.lastLivePrice, null);
 
-      const sideMap = { "شراء": "BUY", "بيع": "SELL" };
-      const payload = {
-        side: sideMap[m[1]],
-        tf: (window.currentTF || window.TF || null),
-        price: (document.getElementById("livePrice")?.textContent || "").replace(/[^\d.]/g, "") || null,
-        ts: Date.now()
-      };
+      // لا ترسل إلا أول مرة لنفس (TF + Side + Entry/Price)
+      if (!shouldSendOnce(tf, side, entry ?? price)) return;
 
-      fetch(WORKER_URL, {
+      // أرسل للـWorker
+      await fetch(`${WORKER_URL}/alert`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          side, tf, entry, tp1, tp2, sl, price,
+          filtersRejected: false
+        })
       }).catch(() => {});
-    } catch (err) {
-      console.error("notifyFromAdviceText error:", err);
+    } catch (e) {
+      // تجاهل أخطاء الشبكة
     }
   }
 
-  // راقب نصّ النصيحة لالتقاط أي تغيير
-  const target = document.getElementById("adviceText");
-  if (target && !target.__gsNotifyWired) {
-    const mo = new MutationObserver(() => notifyFromAdviceText(target.textContent || ""));
-    mo.observe(target, { childList: true, subtree: true, characterData: true });
-    target.__gsNotifyWired = true;
-    // فحص أوّل مرة
-    notifyFromAdviceText(target.textContent || "");
+  function coalesce(...vals) {
+    for (const v of vals) if (v !== undefined && v !== null) return v;
+    return null;
   }
+
+  // نعرّض الدالة للاستخدام من الكود الأساسي
+  window.gsNotifyIfRealSignal = notifyIfRealSignal;
 })();
