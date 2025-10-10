@@ -1,208 +1,177 @@
-
-/*! GoldSignals bridge v5
- * - يمنع ظهور نصيحة افتراضية بلا داعٍ
- * - يذكر أسباب الرفض عند تفعيل الفلاتر
- * - يُظهر/يُخفي الشارت بحسب وجود نصيحة (كما كان سابقًا)
- * ملاحظة: السكربت لا يغيّر HTML، كلّه يعمل عبر مراقبة الـDOM.
- */
-
+/* GoldSignals → Worker bridge (strict real-signal + strong dedup) */
 (function () {
-  const T = {
-    ADVICE_TITLE: "نصيحة الدخول/الخروج",
-    CHART_TITLE: "(SL/TP/دخول/خروج)",
-    AUTO_INDICATORS: "Auto indicators",
-    NY_FILTER: "تعطيل فلتر ساعات نيويورك",
-    PIVOT_FILTER: "تعطيل فلتر الاقتراب من Pivot",
-    SUMMARY: "الملخ",
-    BUY: "شراء",
-    SELL: "بيع",
-    NEUTRAL: "حيادي",
-    NO_ADVICE: "لا توجد نصيحة.",
-    INFO_ONLY: "إطلاع فقط",
-    VIRTUAL_ENTRY: "دخول افتراضي",
-    REASONS_PREFIX: "أسباب الرفض: "
+  const WORKER_URL = "https://workerjs.samer-mourtada.workers.dev/alert";
+
+  const box =
+    document.getElementById("adviceText") ||
+    document.querySelector("#adviceText");
+  if (!box) {
+    console.warn("[GS] adviceText not found.");
+    return;
+  }
+
+  const num = (v) => {
+    if (v == null) return null;
+    const n = Number(String(v).replace(/[^\d.\-]+/g, ""));
+    return isFinite(n) ? n : null;
   };
 
-  // === أدوات DOM مساعدة ===
-  function qsa(sel, root=document){ return Array.from(root.querySelectorAll(sel)); }
-  function findByText(root, txt){
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null);
-    let n;
-    while((n = walker.nextNode())){
-      if((n.textContent||"").trim().includes(txt)) return n;
+  function parseTF(text) {
+    const en = text.match(/TF\s*:\s*(\d+)\s*([mh])/i);
+    if (en) {
+      const n = Number(en[1]);
+      const u = en[2].toLowerCase();
+      const mins = u === "h" ? n * 60 : n;
+      return { tfLabel: `${mins}${u === "h" ? "h" : "m"}`, tfMins: mins };
     }
-    return null;
-  }
-  function closestCard(el){
-    while (el && el!==document.body){
-      const cs = getComputedStyle(el);
-      if (cs.borderRadius && parseFloat(cs.borderRadius) > 0) return el;
-      el = el.parentElement;
+    const ar = text.match(/الإطار\s*:\s*(\d+)\s*دق(?:يقة|ائق)/);
+    if (ar) {
+      const mins = Number(ar[1]);
+      return { tfLabel: `${mins}m`, tfMins: mins };
     }
-    return null;
+    const guess = Number(window.currentTFMinutes || window.currentTF || 15);
+    return { tfLabel: `${guess}m`, tfMins: guess || 15 };
   }
 
-  // اعثر على صندوق النصيحة وعنصر الكتابة فيه
-  function getAdviceNodes(){
-    const titleEl = findByText(document.body, T.ADVICE_TITLE);
-    if(!titleEl) return {};
-    const card = closestCard(titleEl) || titleEl.parentElement;
-    // أول عنصر نصي يصلح لعرض النصيحة داخل البطاقة
-    let textEl = qsa("p, div, span", card).find(e=>/SL|TP|ATR|آخر سعر|لا توجد نصيحة|إطلاع فقط|افتراضي/.test((e.textContent||"")));
-    if(!textEl){
-      textEl = document.createElement("p");
-      card.appendChild(textEl);
-    }
-    return {card, textEl};
+  // كلمات/عبارات نمنع معها الإرسال
+  const NEGATIVE_PATTERNS = [
+    /مرفوض|مرفوضة|فلتر|فلترات/i,
+    /افتراضي|افتراضية|اطلاع فقط|اطّلاع/i,
+    /قريب جداً?|قريب جدا|قريب من/i,
+    /Pivot/i,
+  ];
+
+  function isRejected(text) {
+    return NEGATIVE_PATTERNS.some((re) => re.test(text));
   }
 
-  // اعثر على حاوية الشارت
-  function getChartCard(){
-    const titleEl = findByText(document.body, T.CHART_TITLE);
-    if(!titleEl) return null;
-    return closestCard(titleEl) || titleEl.parentElement;
+  function parseAdvice(text) {
+    let side = null;
+    if (/BUY/i.test(text) || /شراء/.test(text)) side = "BUY";
+    if (/SELL/i.test(text) || /بيع/.test(text)) side = "SELL";
+
+    const mEntry =
+      text.match(/Entry\s*:\s*([0-9.,]+)/i) ||
+      text.match(/سعر الدخول\s*[:：]\s*([0-9.,]+)/);
+    const entry = mEntry ? num(mEntry[1]) : null;
+
+    const mTp1 =
+      text.match(/TP1\s*:\s*([0-9.,]+)/i) ||
+      text.match(/TP1\s*[:：]\s*([0-9.,]+)/i);
+    const mTp2 =
+      text.match(/TP2\s*:\s*([0-9.,]+)/i) ||
+      text.match(/TP2\s*[:：]\s*([0-9.,]+)/i);
+    const mSl =
+      text.match(/SL\s*:\s*([0-9.,]+)/i) ||
+      text.match(/وقف الخسارة\s*[:：]\s*([0-9.,]+)/);
+
+    const tp1 = mTp1 ? num(mTp1[1]) : null;
+    const tp2 = mTp2 ? num(mTp2[1]) : null;
+    const sl = mSl ? num(mSl[1]) : null;
+
+    const { tfLabel, tfMins } = parseTF(text);
+
+    return {
+      side,
+      entry,
+      tp1,
+      tp2,
+      sl,
+      tf: tfLabel,
+      tfMins,
+      filtersRejected: isRejected(text),
+    };
   }
 
-  // قراءة حالات الفلاتر من الشيكبوكسات
-  function readFilters(){
-    const nyBox = findByText(document.body, T.NY_FILTER);
-    const pvBox = findByText(document.body, T.PIVOT_FILTER);
-    const nyEnabled = nyBox ? !!qsa('input[type="checkbox"]', nyBox.parentElement).find(i=>i.checked) : false;
-    const pvEnabled = pvBox ? !!qsa('input[type="checkbox"]', pvBox.parentElement).find(i=>i.checked) : false;
-    return { nyEnabled, pvEnabled };
+  // مفاتيح التخزين
+  const K_BUCKET = "__gs_last_bucket__";
+  const K_HASH = "__gs_last_payload_hash__";
+  const read = (k) => sessionStorage.getItem(k);
+  const write = (k, v) => sessionStorage.setItem(k, v);
+
+  // Hash بسيط لمحتوى الإشارة
+  const hash = (obj) =>
+    btoa(
+      unescape(
+        encodeURIComponent(
+          JSON.stringify(obj, Object.keys(obj).sort()).slice(0, 256)
+        )
+      )
+    );
+
+  let lastText = "";
+  let debounceTimer = null;
+  const DEBOUNCE_MS = 2200; // أطول شوي ليستقر النص بعد تبديل TF
+
+  async function send(payload) {
+    try {
+      const r = await fetch(WORKER_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json().catch(() => ({}));
+      console.log("[GS] sent:", payload, j);
+    } catch (e) {
+      console.error("[GS] send failed:", e);
+    }
   }
 
-  // ساعات نيويورك (08:00–17:00) بتوقيت نيويورك:
-  function inNYHours(nowLocal=new Date()){
-    try{
-      const fmt = new Intl.DateTimeFormat('en-US',{ timeZone:'America/New_York', hour12:false, hour:'2-digit' });
-      const hourNY = parseInt(fmt.format(nowLocal),10);
-      return hourNY>=8 && hourNY<17;
-    }catch(_){ return true; }
-  }
+  function trySend(text) {
+    const p = parseAdvice(text);
+    console.log("[GS] parsed:", p);
 
-  // آخر سعر من النصيحة أو من عناصر "Live"
-  function getLastPrice(){
-    // من النص الحالي
-    const {textEl} = getAdviceNodes();
-    if (textEl){
-      const m = (textEl.textContent||"").match(/آخر سعر[:：]?\s*([0-9.,]+)/);
-      if(m){ return parseFloat(m[1].replace(/,/g,'')); }
-    }
-    // من التسميات قرب الشارت
-    const liveEl = findByText(document.body, "Live");
-    if(liveEl){
-      const m = (liveEl.parentElement.textContent||"").match(/Live[:：]?\s*([0-9.,]+)/);
-      if(m){ return parseFloat(m[1].replace(/,/g,'')); }
-    }
-    // من حبوب المؤشرات (EMA السريع/البطيء)
-    const chip = qsa("div,span").find(e=>/\bEMA\b/.test((e.textContent||"")));
-    if(chip){
-      const n = (chip.textContent||"").match(/([0-9.,]+)/);
-      if(n){ return parseFloat(n[1].replace(/,/g,'')); }
-    }
-    return NaN;
-  }
-
-  // مسافة الاقتراب بالدولار
-  function getPivotDistance(){
-    const lbl = findByText(document.body, "مسافة الاقتراب");
-    if(!lbl) return 0.5;
-    const inp = qsa('input, .input, .form-control', lbl.parentElement).find(i=>/input|textarea/i.test(i.tagName)||i.getAttribute('contenteditable')==='true');
-    if(inp){
-      const v = (inp.value||inp.textContent||"").trim();
-      const x = parseFloat(v.replace(/,/g,''));
-      return isFinite(x)?x:0.5;
-    }
-    return 0.5;
-  }
-
-  // تحقق إن كان هناك إشارة (شراء/بيع)
-  function hasSignal(){
-    // من "الملخّص"
-    const sumEl = findByText(document.body, "الملخص");
-    if (sumEl){
-      const s = (closestCard(sumEl)||sumEl.parentElement).textContent||"";
-      if (s.includes(T.BUY) || s.includes(T.SELL)) return true;
-    }
-    // من آخر جدول
-    const row = qsa("table tr").slice(1,3).find(tr=>/شراء|بيع/.test(tr.textContent||""));
-    if(row) return true;
-    return false;
-  }
-
-  // أسباب الرفض
-  function computeReasons(){
-    const {nyEnabled, pvEnabled} = readFilters();
-    const reasons = [];
-    if(!nyEnabled && !pvEnabled){
-      return {nyEnabled, pvEnabled, reasons};
-    }
-    if(nyEnabled && !inNYHours()){
-      reasons.push("خارج ساعات نيويورك");
-    }
-    if(pvEnabled){
-      const last = getLastPrice();
-      if(isFinite(last)){
-        // نقول رفض إن كان السعر ضمن المسافة
-        const dist = getPivotDistance();
-        // نقرأ Pivot من جدول pivot إن وُجد:
-        const pivotEl = findByText(document.body, "Pivot");
-        if(pivotEl){
-          const wrapper = closestCard(pivotEl) || pivotEl.parentElement;
-          const t = (wrapper.textContent||"");
-          const m = t.match(/Pivot\s*([0-9.,]+)/);
-          if(m){
-            const pv = parseFloat(m[1].replace(/,/g,''));
-            if(isFinite(pv) && Math.abs(last-pv) <= dist){
-              reasons.push("قرب مستوى Pivot");
-            }
-          }
-        }
-      }
-    }
-    return {nyEnabled, pvEnabled, reasons};
-  }
-
-  // تحديث النصيحة وإظهار/إخفاء الشارت
-  function updateAdvice(){
-    const A = getAdviceNodes();
-    if(!A.textEl) return;
-    const chartCard = getChartCard();
-    const {reasons} = computeReasons();
-    const signal = hasSignal();
-
-    // لا توجد إشارة ولا أسباب -> لا نصيحة + إخفاء الشارت
-    if(!signal && reasons.length===0){
-      A.textEl.textContent = T.NO_ADVICE;
-      if(chartCard) chartCard.style.display = "none";
+    // شرط الإشارة الحقيقية: side + entry + tp1 + sl موجودين،
+    // وعدم وجود كلمات الرفض/الافتراضي/قريب …إلخ
+    if (
+      p.filtersRejected ||
+      !p.side ||
+      p.entry == null ||
+      p.tp1 == null ||
+      p.sl == null
+    ) {
+      console.warn("[GS] skipped (not a real signal).");
       return;
     }
 
-    // يوجد أسباب فلتر تمنع التفعيل
-    if(reasons.length>0){
-      // اعرض "لا توجد نصيحة. أسباب الرفض: ..."
-      A.textEl.textContent = `${T.NO_ADVICE} ${T.REASONS_PREFIX}${reasons.join(" + ")}`;
-      // الشارت يُعرض لأن الحسابات موجودة لكن التنفيذ مرفوض
-      if(chartCard) chartCard.style.display = "";
+    // Dedup حسب الشمعة
+    const bucket =
+      p.side + "|" + p.tf + "|" + Math.floor(Date.now() / (p.tfMins * 60 * 1000));
+
+    // Dedup أقوى حسب محتوى الإشارة
+    const payload = {
+      side: p.side,
+      tf: p.tf,
+      entry: p.entry,
+      tp1: p.tp1,
+      tp2: p.tp2,
+      sl: p.sl,
+      filtersRejected: false,
+    };
+    const h = hash(payload);
+
+    // لو نفس المحتوى أو نفس الشمعة—لا تبعِت
+    if (bucket === read(K_BUCKET) || h === read(K_HASH)) {
+      console.log("[GS] deduped.");
       return;
     }
 
-    // يوجد إشارة ولا موانع -> اسمح بالنصيحة وأظهر الشارت
-    // إن كان النص الحالي "إطلاع فقط..." اتركه، وإلا لا تغيّر صياغة التطبيق الأصلي
-    if((A.textEl.textContent||"").trim() === "" || (A.textEl.textContent||"").includes(T.NO_ADVICE)){
-      // لا نملك صياغة SL/TP هنا، نترك النص كما يضعه التطبيق الرئيسي.
-      A.textEl.textContent = ""; // يسمح للتطبيق أن يكتب نصه
-    }
-    if(chartCard) chartCard.style.display = "";
+    write(K_BUCKET, bucket);
+    write(K_HASH, h);
+    send(payload);
   }
 
-  // راقب الصفحة وحدث
-  const obs = new MutationObserver(()=>{
-    try{ updateAdvice(); }catch(e){ /*noop*/ }
-  });
-  obs.observe(document.documentElement, {subtree:true, childList:true, characterData:true});
+  function onChange() {
+    const txt = box.innerText || "";
+    if (txt === lastText) return;
+    lastText = txt;
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => trySend(txt), DEBOUNCE_MS);
+  }
 
-  // تهيئة أولية متأخرة قليلاً
-  setTimeout(updateAdvice, 400);
+  // بدء المراقبة
+  onChange(); // يرسل فقط إذا كانت نصيحة حقيقية جاهزة
+  const mo = new MutationObserver(onChange);
+  mo.observe(box, { childList: true, subtree: true, characterData: true });
+  console.log("[GS] watcher started.");
 })();
