@@ -1847,7 +1847,7 @@ try { if (!window.wirePreExportBtn) { window.wirePreExportBtn = function(){ try{
   clearInterval(window.__GS_WORKER_IV__);
   window.__GS_WORKER_IV__ = setInterval(tick, 1000);
   tick();
-  
+  })();
 /* ==== GS HARD LOCK (worker-only) v1 ==== */
 (function(){
   if (window.__GS_HARD_LOCK__) return; window.__GS_HARD_LOCK__ = true;
