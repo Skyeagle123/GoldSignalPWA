@@ -313,7 +313,69 @@
   ['load','pageshow','visibilitychange','focus','hashchange'].forEach(ev=>addEventListener(ev, ()=>setTimeout(sync,50), {passive:true}));
 })();
 </script>
+<script>
+// === Auto-wire live price KPI ===
+(function(){
+  if (window.__AUTO_KPI__) return; window.__AUTO_KPI__ = true;
 
+  // ابحث عن بطاقة فيها نص "السعر الحي" ثم لقّط الرقم الكبير فيها
+  function ensureKpiSpan(){
+    // 1) إذا موجود سبان مُسبقًا خلّص
+    let el = document.querySelector('#livePrice, .live-price, [data-live-price]');
+    if (el) return el;
+
+    // 2) دور على عنصر نصّه يحوي "السعر الحي"
+    const all = Array.from(document.querySelectorAll('h1,h2,h3,h4,div,span,strong,b,p'));
+    const label = all.find(n => /السعر\s*الحي/i.test(n.textContent || ''));
+
+    // إذا ما لقيناه جرّب كلمة "Live" كآخر حل
+    const container = (label && label.closest('section,div,article,header,main')) || document.body;
+
+    // 3) جوّا نفس الحاوية دور على عنصر فيه رقم طويل (شكل سعر)
+    const numNode = Array.from(container.querySelectorAll('h1,h2,h3,div,span,strong,b'))
+      .find(n => /[-+]?\d{3,}(?:[.,]\d+)?/.test((n.textContent||'').replace(/\s/g,'')));
+
+    // 4) أنشئ span قابل للتحديث
+    el = document.createElement('span');
+    el.id = 'livePrice';
+    el.setAttribute('data-live-price','');
+
+    if (numNode) {
+      // استبدل محتوى الرقم الحالي بسباننا
+      numNode.textContent = ''; 
+      numNode.appendChild(el);
+    } else if (label) {
+      // أو حطّه بعد اللابل بحال ما لقينا رقم
+      label.insertAdjacentElement('afterend', el);
+    } else {
+      // آخر حل: حطّه ببداية الصفحة (ما رح يزعج)
+      document.body.prepend(el);
+    }
+    return el;
+  }
+
+  function fmt(v){ try{ return (Math.round(v*1000)/1000).toFixed(3); }catch(_){ return String(v); } }
+
+  function sync(){
+    try{
+      const el = ensureKpiSpan();
+      // خُذ الرقم من __livePrice أو من LAST_LIVE
+      const p = (typeof window.__livePrice==='number' && isFinite(window.__livePrice))
+                ? window.__livePrice
+                : (window.LAST_LIVE && typeof window.LAST_LIVE.price==='number' ? window.LAST_LIVE.price : null);
+      if (p==null) return;
+      const txt = fmt(p);
+      if (el.textContent !== txt) el.textContent = txt;
+    }catch(_){}
+  }
+
+  // شغّل المزامنة
+  setInterval(sync, 500);
+  ['load','pageshow','visibilitychange','focus','hashchange'].forEach(ev =>
+    addEventListener(ev, ()=>setTimeout(sync,50), {passive:true})
+  );
+})();
+</script>
 </body>
 </html>
 
