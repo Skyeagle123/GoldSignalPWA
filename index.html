@@ -49,11 +49,10 @@
     label.muted input[type="checkbox"]{flex:0 0 auto;inline-size:18px;block-size:18px;margin:0;accent-color:var(--accent)}
     .row-wrap label.muted{white-space:normal}
 
-    /* تلوين نصّ النصيحة */
-    #adviceText{color:var(--text)}
+    /* تلوين نصّ النصيحة: افتراضي أبيض، أخضر شراء، أحمر بيع */
+    #adviceText{color:#ffffff}
     #adviceText.advice--buy{color:var(--good) !important}
     #adviceText.advice--sell{color:var(--bad) !important}
-    #adviceText.advice--neutral{color:#ffffff !important}
   </style>
 </head>
 <body>
@@ -276,26 +275,13 @@
   function classify() {
     const t = (adv.textContent || adv.innerText || '').trim().normalize('NFC');
 
-    // إشارات صريحة
     const isBuy  = /(^|\s)(BUY|شراء)(\s|$)/i.test(t);
     const isSell = /(^|\s)(SELL|بيع)(\s|$)/i.test(t);
 
-    // حالات صريحة للحياد/الاطلاع/المرفوض
-    const forceNeutral = /(مرفوض|فلتر|فلترة|للاطلاع|للإطلاع|حيادي|حيادية)/i.test(t);
-
-    adv.classList.remove('advice--buy','advice--sell','advice--neutral');
-
-    let cls = 'advice--neutral';
-    if (forceNeutral) {
-      cls = 'advice--neutral';
-    } else if (isBuy && !isSell) {
-      cls = 'advice--buy';
-    } else if (isSell && !isBuy) {
-      cls = 'advice--sell';
-    } else {
-      cls = 'advice--neutral';
-    }
-    adv.classList.add(cls);
+    adv.classList.remove('advice--buy','advice--sell'); // ما في لون “حيادي” صريح
+    if (isBuy && !isSell) adv.classList.add('advice--buy');
+    else if (isSell && !isBuy) adv.classList.add('advice--sell');
+    // غير هيك: يضلّ اللون الافتراضي (أبيض) من CSS
   }
 
   // أول مرة
