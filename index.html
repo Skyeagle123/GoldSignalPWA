@@ -44,15 +44,23 @@
     .pivot-col .lbl{color:#cbd5e1;font-size:12px;margin-bottom:4px}
     .pivot-col .val{font-weight:700}
 
-    /* محاذاة الـ checkbox على نفس السطر */
-    label.muted{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;margin:4px 0}
-    label.muted input[type="checkbox"]{flex:0 0 auto;inline-size:18px;block-size:18px;margin:0;accent-color:var(--accent)}
+    /* ↓↓↓ تعديل محاذاة الـ checkbox ليكون أمام النص وعلى نفس السطر ↓↓↓ */
+    label.muted{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      white-space:nowrap;
+      margin:4px 0;     /* يحافظ على نفس الهوامش العامة */
+    }
+    label.muted input[type="checkbox"]{
+      flex:0 0 auto;
+      inline-size:18px;
+      block-size:18px;
+      margin:0;
+      accent-color: var(--accent);
+    }
+    /* في حال كانت المساحة ضيقة بالموبايل */
     .row-wrap label.muted{white-space:normal}
-
-    /* تلوين نصّ النصيحة: افتراضي أبيض، أخضر شراء، أحمر بيع */
-    #adviceText{color:#ffffff}
-    #adviceText.advice--buy{color:var(--good) !important}
-    #adviceText.advice--sell{color:var(--bad) !important}
   </style>
 </head>
 <body>
@@ -258,6 +266,48 @@
     </div>
   </div>
 
+  <!-- Backtest -->
+  <div class="card">
+    <h3>اختبار الاستراتيجية (Backtest)</h3>
+    <div class="grid">
+      <div>
+        <label>ملف CSV (5 دقائق):</label>
+        <input id="btCsv" type="file" accept=".csv">
+        <div class="hint">تنسيق مفضّل: <code>Symbol,Date,Time,Open,High,Low,Close</code> أو تاريخ/سعر.</div>
+      </div>
+      <div>
+        <label>الإطار الأساسي:</label>
+        <select id="btTf">
+          <option value="5">5 دقائق</option>
+          <option value="30">30 دقيقة</option>
+          <option value="60">ساعة</option>
+          <option value="1440">يوم (NY)</option>
+        </select>
+      </div>
+      <div>
+        <label class="muted"><input id="btStrict" type="checkbox" checked> Strict Filters</label>
+        <label class="muted"><input id="btWalk" type="checkbox" checked> Walk-Forward (3-Fold)</label>
+      </div>
+      <div>
+        <label>حد أقصى مخاطرة يومية %</label>
+        <input id="btDailyRiskCap" type="number" step="0.1" value="3.0">
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button id="btRun" class="pill">تشغيل الاختبار</button>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;gap:20px;flex-wrap:wrap">
+      <div style="min-width:260px"><div id="btStats" class="muted">—</div></div>
+      <div style="flex:1;min-width:260px"><canvas id="btEquity" style="width:100%;height:200px"></canvas></div>
+    </div>
+    <div style="overflow:auto;margin-top:10px">
+      <table>
+        <thead><tr><th>#</th><th>تاريخ (محلي)</th><th>Side</th><th>Entry</th><th>Exit</th><th>R</th><th>PnL$</th></tr></thead>
+        <tbody id="btRows"></tbody>
+      </table>
+    </div>
+  </div>
+
 </main>
 
 <div id="gsPanel" aria-hidden="false">
@@ -265,33 +315,6 @@
   <button id="btnExportCsv">💾 تنزيل CSV المدموج</button>
   <input id="hiddenCsvFile" type="file" accept=".csv" style="display:none">
 </div>
-
-<!-- سكربت تلوين النصيحة (HTML فقط دون تعديل app.js) -->
-<script>
-(function () {
-  const adv = document.getElementById('adviceText');
-  if (!adv) return;
-
-  function classify() {
-    const t = (adv.textContent || adv.innerText || '').trim().normalize('NFC');
-
-    const isBuy  = /(^|\s)(BUY|شراء)(\s|$)/i.test(t);
-    const isSell = /(^|\s)(SELL|بيع)(\s|$)/i.test(t);
-
-    adv.classList.remove('advice--buy','advice--sell'); // ما في لون “حيادي” صريح
-    if (isBuy && !isSell) adv.classList.add('advice--buy');
-    else if (isSell && !isBuy) adv.classList.add('advice--sell');
-    // غير هيك: يضلّ اللون الافتراضي (أبيض) من CSS
-  }
-
-  // أول مرة
-  classify();
-
-  // راقب أي تغيّر بالنصيحة من app.js وطبّق اللون فورًا
-  const mo = new MutationObserver(classify);
-  mo.observe(adv, { childList:true, subtree:true, characterData:true });
-})();
-</script>
 
 <script src="app.js?v=1"></script>
 <script src="mobile-debug.js?v=1"></script>
