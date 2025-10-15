@@ -45,6 +45,7 @@
 
 <main class="wrap">
 
+  <!-- إعدادات -->
   <div class="card">
     <h3>إعدادات البيانات</h3>
     <div id="csvControls" style="margin:12px 0; display:flex; gap:10px; flex-wrap:wrap;"></div>
@@ -66,7 +67,6 @@
       </div>
       <div>
         <label class="muted"><input id="proMode" type="checkbox"> وضع دقيق (Precise)</label>
-        <!-- هذا هو الـ MTF المعتمد (فوق) -->
         <label class="muted"><input id="mtfConfirm" type="checkbox" checked> تأكيد متعدد الأطر (MTF)</label>
       </div>
       <div style="display:flex;align-items:flex-end">
@@ -75,24 +75,48 @@
     </div>
   </div>
 
+  <!-- السعر الحي + الملخص + المؤشرات (مُستعاد كما كان) -->
+  <div class="card">
+    <div class="grid">
+      <div>
+        <div class="muted">السعر الحي</div>
+        <div class="kpi" id="livePrice">—</div>
+        <div class="hint" id="liveTime">—</div>
+      </div>
+      <div>
+        <div class="muted">الملخّص:</div>
+        <div id="summaryText" style="font-size:20px;font-weight:700">—</div>
+      </div>
+      <div>
+        <div class="muted">المؤشرات</div>
+        <div class="row" style="gap:10px;flex-wrap:wrap">
+          <span class="tag">RSI: <b id="indRSI">—</b></span>
+          <span class="tag">MACD: <b id="indMACD">—</b></span>
+          <span class="tag">EMA سريع: <b id="indEMAF">—</b></span>
+          <span class="tag">EMA بطيء: <b id="indEMAS">—</b></span>
+          <span class="tag">Stoch: <b id="indStoch">—</b></span>
+          <span class="tag">BB: <b id="indBB">—</b></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- الشارت -->
   <div class="card">
     <h3>الرسم البياني (دخول/خروج/SL/TP)</h3>
     <canvas id="tradeChart" aria-label="chart"></canvas>
     <div class="hint">• الأزرق = دخول • الأخضر = TP1/TP2 • الأحمر = SL • الأبيض = السعر الحي (Live).</div>
   </div>
 
-  <!-- ▼▼ تم نقل النصيحة لتكون مباشرة تحت الشارت ▼▼ -->
+  <!-- النصيحة مباشرة تحت الشارت -->
   <div class="card">
     <h3>نصيحة الدخول/الخروج</h3>
     <div id="adviceText">—</div>
   </div>
-  <!-- ▲▲ /End advice move ▲▲ -->
 
-  <!-- ========== الإعدادات الفنية ========== -->
+  <!-- الإعدادات الفنية -->
   <div class="card">
     <h3>الإعدادات الفنية</h3>
-
-    <!-- أرقام أساسية -->
     <div class="grid">
       <div><label>EMA سريع</label><input id="emaFast" type="number" value="12" min="2"></div>
       <div><label>EMA بطيء</label><input id="emaSlow" type="number" value="26" min="3"></div>
@@ -109,7 +133,6 @@
 
     <div class="divider"></div>
 
-    <!-- المؤشرات (مرصوصين سوا) -->
     <div class="subhead">المؤشرات</div>
     <div class="grid">
       <div>
@@ -142,7 +165,6 @@
 
     <div class="divider"></div>
 
-    <!-- الفلاتر + الزر الآلي (بدون تكرار MTF) -->
     <div class="subhead">الفلاتر &amp; Auto</div>
     <div class="grid">
       <div>
@@ -159,8 +181,8 @@
       </div>
     </div>
   </div>
-  <!-- ========== /الإعدادات الفنية ========== -->
 
+  <!-- Pivot -->
   <div class="card">
     <h3>الدعم والمقاومة (Pivot) • على يوم نيويورك</h3>
     <div class="grid">
@@ -174,6 +196,7 @@
     </div>
   </div>
 
+  <!-- تنبيه اقتراب السعر -->
   <div class="card">
     <h3>تنبيه اقتراب السعر من نقطة الدخول</h3>
     <label class="muted"><input id="alertEnable" type="checkbox"> تفعيل التنبيه</label>
@@ -186,6 +209,7 @@
     </div>
   </div>
 
+  <!-- البيانات الأخيرة -->
   <div class="card">
     <h3>البيانات الأخيرة</h3>
     <div style="overflow:auto">
@@ -200,6 +224,7 @@
     </div>
   </div>
 
+  <!-- Backtest -->
   <div class="card">
     <h3>اختبار الاستراتيجية (Backtest)</h3>
     <div class="grid">
@@ -249,12 +274,10 @@
   <input id="hiddenCsvFile" type="file" accept=".csv" style="display:none">
 </div>
 
- <script src="app.js?v=1"></script>
+<script src="app.js?v=1"></script>
 <script src="mobile-debug.js?v=1"></script>
 <script src="indicators-bridge-plus.js?v=1"></script>
 <script src="gs-btns-bridge.js?v=1"></script>
-
-<!-- الجسر الجديد للوركر -->
 <script src="gs-worker-bridge.js?v=6"></script>
 </body>
 </html>
