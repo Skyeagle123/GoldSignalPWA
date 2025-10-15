@@ -43,6 +43,24 @@
     .pivot-col{background:#0c1528;border:1px solid #1d293c;border-radius:12px;padding:10px;text-align:center}
     .pivot-col .lbl{color:#cbd5e1;font-size:12px;margin-bottom:4px}
     .pivot-col .val{font-weight:700}
+
+    /* ↓↓↓ تعديل محاذاة الـ checkbox ليكون أمام النص وعلى نفس السطر ↓↓↓ */
+    label.muted{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      white-space:nowrap;
+      margin:4px 0;     /* يحافظ على نفس الهوامش العامة */
+    }
+    label.muted input[type="checkbox"]{
+      flex:0 0 auto;
+      inline-size:18px;
+      block-size:18px;
+      margin:0;
+      accent-color: var(--accent);
+    }
+    /* في حال كانت المساحة ضيقة بالموبايل */
+    .row-wrap label.muted{white-space:normal}
   </style>
 </head>
 <body>
@@ -147,8 +165,7 @@
     <h3>الدعم والمقاومة (Pivot) • على يوم نيويورك</h3>
     <div class="pivot-grid">
       <div class="pivot-col">
-        <div class="lbl">Pivot</div>
-        <div class="val" id="pivotP">—</div>
+        <div class="lbl">Pivot</div><div class="val" id="pivotP">—</div>
       </div>
       <div class="pivot-col">
         <div class="lbl">R1</div><div class="val" id="r1">—</div>
