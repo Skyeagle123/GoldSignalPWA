@@ -45,19 +45,15 @@
     .pivot-col .val{font-weight:700}
 
     /* محاذاة الـ checkbox على نفس السطر */
-    label.muted{
-      display:inline-flex; align-items:center; gap:8px; white-space:nowrap; margin:4px 0;
-    }
-    label.muted input[type="checkbox"]{
-      flex:0 0 auto; inline-size:18px; block-size:18px; margin:0; accent-color: var(--accent);
-    }
+    label.muted{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;margin:4px 0}
+    label.muted input[type="checkbox"]{flex:0 0 auto;inline-size:18px;block-size:18px;margin:0;accent-color:var(--accent)}
     .row-wrap label.muted{white-space:normal}
 
-    /* تلوين نصّ النصيحة بحسب الحالة */
+    /* تلوين نصّ النصيحة */
     #adviceText{color:var(--text)}
-    #adviceText.advice--buy{color:var(--good)}
-    #adviceText.advice--sell{color:var(--bad)}
-    #adviceText.advice--neutral{color:#ffffff}
+    #adviceText.advice--buy{color:var(--good) !important}
+    #adviceText.advice--sell{color:var(--bad) !important}
+    #adviceText.advice--neutral{color:#ffffff !important}
   </style>
 </head>
 <body>
@@ -263,48 +259,6 @@
     </div>
   </div>
 
-  <!-- Backtest -->
-  <div class="card">
-    <h3>اختبار الاستراتيجية (Backtest)</h3>
-    <div class="grid">
-      <div>
-        <label>ملف CSV (5 دقائق):</label>
-        <input id="btCsv" type="file" accept=".csv">
-        <div class="hint">تنسيق مفضّل: <code>Symbol,Date,Time,Open,High,Low,Close</code> أو تاريخ/سعر.</div>
-      </div>
-      <div>
-        <label>الإطار الأساسي:</label>
-        <select id="btTf">
-          <option value="5">5 دقائق</option>
-          <option value="30">30 دقيقة</option>
-          <option value="60">ساعة</option>
-          <option value="1440">يوم (NY)</option>
-        </select>
-      </div>
-      <div>
-        <label class="muted"><input id="btStrict" type="checkbox" checked> Strict Filters</label>
-        <label class="muted"><input id="btWalk" type="checkbox" checked> Walk-Forward (3-Fold)</label>
-      </div>
-      <div>
-        <label>حد أقصى مخاطرة يومية %</label>
-        <input id="btDailyRiskCap" type="number" step="0.1" value="3.0">
-      </div>
-      <div style="display:flex;align-items:flex-end">
-        <button id="btRun" class="pill">تشغيل الاختبار</button>
-      </div>
-    </div>
-    <div class="row" style="margin-top:10px;gap:20px;flex-wrap:wrap">
-      <div style="min-width:260px"><div id="btStats" class="muted">—</div></div>
-      <div style="flex:1;min-width:260px"><canvas id="btEquity" style="width:100%;height:200px"></canvas></div>
-    </div>
-    <div style="overflow:auto;margin-top:10px">
-      <table>
-        <thead><tr><th>#</th><th>تاريخ (محلي)</th><th>Side</th><th>Entry</th><th>Exit</th><th>R</th><th>PnL$</th></tr></thead>
-        <tbody id="btRows"></tbody>
-      </table>
-    </div>
-  </div>
-
 </main>
 
 <div id="gsPanel" aria-hidden="false">
@@ -320,20 +274,27 @@
   if (!adv) return;
 
   function classify() {
-    const t = (adv.textContent || adv.innerText || '').trim();
+    const t = (adv.textContent || adv.innerText || '').trim().normalize('NFC');
+
+    // إشارات صريحة
+    const isBuy  = /(^|\s)(BUY|شراء)(\s|$)/i.test(t);
+    const isSell = /(^|\s)(SELL|بيع)(\s|$)/i.test(t);
+
+    // حالات صريحة للحياد/الاطلاع/المرفوض
+    const forceNeutral = /(مرفوض|فلتر|فلترة|للاطلاع|للإطلاع|حيادي|حيادية)/i.test(t);
+
     adv.classList.remove('advice--buy','advice--sell','advice--neutral');
 
-    // افتراض حيادي
     let cls = 'advice--neutral';
-
-    // تحديد شراء/بيع حسب الكلمات الظاهرة بالنصيحة
-    const s = t.normalize('NFC');
-    if (/(^|\s)(BUY|شراء)(\s|$)/i.test(s)) cls = 'advice--buy';
-    if (/(^|\s)(SELL|بيع)(\s|$)/i.test(s)) cls = 'advice--sell';
-
-    // حالات حيادية/مرفوضة بالفلاتر/للاطلاع تغلب على غيرها
-    if (/(مرفوض|فلتر|فلترة|للاطلاع|للإطلاع|حيادي|حيادية)/i.test(s)) cls = 'advice--neutral';
-
+    if (forceNeutral) {
+      cls = 'advice--neutral';
+    } else if (isBuy && !isSell) {
+      cls = 'advice--buy';
+    } else if (isSell && !isBuy) {
+      cls = 'advice--sell';
+    } else {
+      cls = 'advice--neutral';
+    }
     adv.classList.add(cls);
   }
 
