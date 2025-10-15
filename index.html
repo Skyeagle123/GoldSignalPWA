@@ -44,23 +44,20 @@
     .pivot-col .lbl{color:#cbd5e1;font-size:12px;margin-bottom:4px}
     .pivot-col .val{font-weight:700}
 
-    /* ↓↓↓ تعديل محاذاة الـ checkbox ليكون أمام النص وعلى نفس السطر ↓↓↓ */
+    /* محاذاة الـ checkbox على نفس السطر */
     label.muted{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      white-space:nowrap;
-      margin:4px 0;     /* يحافظ على نفس الهوامش العامة */
+      display:inline-flex; align-items:center; gap:8px; white-space:nowrap; margin:4px 0;
     }
     label.muted input[type="checkbox"]{
-      flex:0 0 auto;
-      inline-size:18px;
-      block-size:18px;
-      margin:0;
-      accent-color: var(--accent);
+      flex:0 0 auto; inline-size:18px; block-size:18px; margin:0; accent-color: var(--accent);
     }
-    /* في حال كانت المساحة ضيقة بالموبايل */
     .row-wrap label.muted{white-space:normal}
+
+    /* تلوين نصّ النصيحة بحسب الحالة */
+    #adviceText{color:var(--text)}
+    #adviceText.advice--buy{color:var(--good)}
+    #adviceText.advice--sell{color:var(--bad)}
+    #adviceText.advice--neutral{color:#ffffff}
   </style>
 </head>
 <body>
@@ -315,6 +312,39 @@
   <button id="btnExportCsv">💾 تنزيل CSV المدموج</button>
   <input id="hiddenCsvFile" type="file" accept=".csv" style="display:none">
 </div>
+
+<!-- سكربت تلوين النصيحة (HTML فقط دون تعديل app.js) -->
+<script>
+(function () {
+  const adv = document.getElementById('adviceText');
+  if (!adv) return;
+
+  function classify() {
+    const t = (adv.textContent || adv.innerText || '').trim();
+    adv.classList.remove('advice--buy','advice--sell','advice--neutral');
+
+    // افتراض حيادي
+    let cls = 'advice--neutral';
+
+    // تحديد شراء/بيع حسب الكلمات الظاهرة بالنصيحة
+    const s = t.normalize('NFC');
+    if (/(^|\s)(BUY|شراء)(\s|$)/i.test(s)) cls = 'advice--buy';
+    if (/(^|\s)(SELL|بيع)(\s|$)/i.test(s)) cls = 'advice--sell';
+
+    // حالات حيادية/مرفوضة بالفلاتر/للاطلاع تغلب على غيرها
+    if (/(مرفوض|فلتر|فلترة|للاطلاع|للإطلاع|حيادي|حيادية)/i.test(s)) cls = 'advice--neutral';
+
+    adv.classList.add(cls);
+  }
+
+  // أول مرة
+  classify();
+
+  // راقب أي تغيّر بالنصيحة من app.js وطبّق اللون فورًا
+  const mo = new MutationObserver(classify);
+  mo.observe(adv, { childList:true, subtree:true, characterData:true });
+})();
+</script>
 
 <script src="app.js?v=1"></script>
 <script src="mobile-debug.js?v=1"></script>
