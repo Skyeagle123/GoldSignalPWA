@@ -35,6 +35,22 @@
     #gsPanel button{padding:8px 10px;border-radius:10px;background:#2b3a60;color:#e6eef9;border:1px solid #3a4f7a}
     .subhead{margin:8px 0 2px;font-size:14px;color:#cbd5e1}
     .divider{height:1px;background:#1f2937;margin:10px 0}
+
+    /* تنسيق أفقي للدعم والمقاومة */
+    .pivot-grid{
+      display:grid;
+      gap:12px;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    }
+    .pivot-col{
+      background:#0c1528;
+      border:1px solid #1d293c;
+      border-radius:12px;
+      padding:10px;
+      text-align:center;
+    }
+    .pivot-col .lbl{color:#cbd5e1;font-size:12px;margin-bottom:4px}
+    .pivot-col .val{font-weight:700}
   </style>
 </head>
 <body>
@@ -45,7 +61,7 @@
 
 <main class="wrap">
 
-  <!-- إعدادات -->
+  <!-- إعدادات البيانات -->
   <div class="card">
     <h3>إعدادات البيانات</h3>
     <div id="csvControls" style="margin:12px 0; display:flex; gap:10px; flex-wrap:wrap;"></div>
@@ -56,6 +72,7 @@
         <input id="csvInput" placeholder="اتركه فاضي لاستخدام XAUUSD_5min.csv من نفس المجلد">
         <div class="hint">إذا تُرك فاضي سيتم تلقائيًا استعمال <code>XAUUSD_5min.csv</code>.</div>
       </div>
+
       <div>
         <label>الإطار الزمني:</label>
         <div class="tabs">
@@ -65,17 +82,25 @@
           <button id="tfD"  class="t">(NY) يوم</button>
         </div>
       </div>
+
+      <!-- ← نقل زر Auto indicators إلى هنا (فوق وضع دقيق) -->
+      <div>
+        <label class="muted"><input id="autoInd" type="checkbox"> Auto indicators (context-aware)</label>
+        <div class="hint">إذا مُفعّل: يختار المؤشرات تلقائيًا بحسب الترند/التذبذب ويعلّم عليها.</div>
+      </div>
+
       <div>
         <label class="muted"><input id="proMode" type="checkbox"> وضع دقيق (Precise)</label>
         <label class="muted"><input id="mtfConfirm" type="checkbox" checked> تأكيد متعدد الأطر (MTF)</label>
       </div>
+
       <div style="display:flex;align-items:flex-end">
         <button id="runBtn" class="pill">حساب الإشارات الآن</button>
       </div>
     </div>
   </div>
 
-  <!-- السعر الحي + الملخص + المؤشرات (مُستعاد كما كان) -->
+  <!-- السعر الحي + الملخص + المؤشرات -->
   <div class="card">
     <div class="grid">
       <div>
@@ -114,7 +139,39 @@
     <div id="adviceText">—</div>
   </div>
 
-  <!-- الإعدادات الفنية -->
+  <!-- الدعم والمقاومة: أفقي وتحت النصيحة -->
+  <div class="card">
+    <h3>الدعم والمقاومة (Pivot) • على يوم نيويورك</h3>
+    <div class="pivot-grid">
+      <div class="pivot-col">
+        <div class="lbl">Pivot</div>
+        <div class="val" id="pivotP">—</div>
+      </div>
+      <div class="pivot-col">
+        <div class="lbl">R1</div>
+        <div class="val" id="r1">—</div>
+        <div class="divider" style="margin:8px 0"></div>
+        <div class="lbl">S1</div>
+        <div class="val" id="s1">—</div>
+      </div>
+      <div class="pivot-col">
+        <div class="lbl">R2</div>
+        <div class="val" id="r2">—</div>
+        <div class="divider" style="margin:8px 0"></div>
+        <div class="lbl">S2</div>
+        <div class="val" id="s2">—</div>
+      </div>
+      <div class="pivot-col">
+        <div class="lbl">R3</div>
+        <div class="val" id="r3">—</div>
+        <div class="divider" style="margin:8px 0"></div>
+        <div class="lbl">S3</div>
+        <div class="val" id="s3">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- الإعدادات الفنية (تم إزالة autoInd من هون لتجنب التكرار) -->
   <div class="card">
     <h3>الإعدادات الفنية</h3>
     <div class="grid">
@@ -165,12 +222,8 @@
 
     <div class="divider"></div>
 
-    <div class="subhead">الفلاتر &amp; Auto</div>
+    <div class="subhead">الفلاتر</div>
     <div class="grid">
-      <div>
-        <label class="muted"><input id="autoInd" type="checkbox"> Auto indicators (context-aware)</label>
-        <div class="hint">إذا مفعّل: يختار تلقائيًا المؤشرات بحسب الترند/التذبذب ويعلّم عليها.</div>
-      </div>
       <div>
         <label class="muted"><input id="toggleNyHours" type="checkbox"> تعطيل فلتر ساعات نيويورك</label>
         <div class="hint">إذا مفعّل: يسمح بالإشارات خارج ساعات NY.</div>
@@ -179,20 +232,6 @@
         <label class="muted"><input id="togglePivotFilter" type="checkbox"> تعطيل فلتر الاقتراب من Pivot</label>
         <div class="hint">إلغاء منع الدخول قرب مستويات Pivot.</div>
       </div>
-    </div>
-  </div>
-
-  <!-- Pivot -->
-  <div class="card">
-    <h3>الدعم والمقاومة (Pivot) • على يوم نيويورك</h3>
-    <div class="grid">
-      <div><div class="muted">R1</div><div id="r1">—</div></div>
-      <div><div class="muted">R2</div><div id="r2">—</div></div>
-      <div><div class="muted">R3</div><div id="r3">—</div></div>
-      <div><div class="muted">Pivot</div><div id="pivotP">—</div></div>
-      <div><div class="muted">S1</div><div id="s1">—</div></div>
-      <div><div class="muted">S2</div><div id="s2">—</div></div>
-      <div><div class="muted">S3</div><div id="s3">—</div></div>
     </div>
   </div>
 
