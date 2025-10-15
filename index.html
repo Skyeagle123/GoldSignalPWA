@@ -76,42 +76,17 @@
   </div>
 
   <div class="card">
-    <div class="grid">
-      <div>
-        <div class="muted">السعر الحي</div>
-        <div class="kpi" id="livePrice">—</div>
-        <div class="hint" id="liveTime">—</div>
-      </div>
-      <div>
-        <div class="muted">الملخّص:</div>
-        <div id="summaryText" style="font-size:20px;font-weight:700">—</div>
-      </div>
-      <div>
-        <div class="muted">المؤشرات</div>
-        <div class="row" style="gap:10px;flex-wrap:wrap">
-          <span class="tag">RSI: <b id="indRSI">—</b></span>
-          <span class="tag">MACD: <b id="indMACD">—</b></span>
-          <span class="tag">EMA سريع: <b id="indEMAF">—</b></span>
-          <span class="tag">EMA بطيء: <b id="indEMAS">—</b></span>
-          <span class="tag">Stoch: <b id="indStoch">—</b></span>
-          <span class="tag">BB: <b id="indBB">—</b></span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
     <h3>الرسم البياني (دخول/خروج/SL/TP)</h3>
     <canvas id="tradeChart" aria-label="chart"></canvas>
     <div class="hint">• الأزرق = دخول • الأخضر = TP1/TP2 • الأحمر = SL • الأبيض = السعر الحي (Live).</div>
   </div>
 
-  <!-- ▼▼ تم نقل هذه البطاقة لتكون مباشرة تحت الشارت ▼▼ -->
-  <div class="card" id="adviceCard">
+  <!-- ▼▼ تم نقل النصيحة لتكون مباشرة تحت الشارت ▼▼ -->
+  <div class="card">
     <h3>نصيحة الدخول/الخروج</h3>
     <div id="adviceText">—</div>
   </div>
-  <!-- ▲▲ /نهاية النقل ▲▲ -->
+  <!-- ▲▲ /End advice move ▲▲ -->
 
   <!-- ========== الإعدادات الفنية ========== -->
   <div class="card">
@@ -210,8 +185,6 @@
       </div>
     </div>
   </div>
-
-  <!-- (تم حذف مكان النصيحة القديم من هنا) -->
 
   <div class="card">
     <h3>البيانات الأخيرة</h3>
