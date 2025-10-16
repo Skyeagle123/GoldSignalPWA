@@ -1645,7 +1645,7 @@ function downloadMergedCsv(){
       const L = (typeof __lastLinesForChart !== "undefined" && __lastLinesForChart) || null;
       const payload = {
         side,
-        tf: tfShort(),
+       tf: (typeof currentTF !== "undefined" ? currentTF : tfShort() || "30m"),
         entry: Number.isFinite(entry) ? entry : (L && Number.isFinite(L.entry) ? L.entry : null),
         tp1: L && Number.isFinite(L.tp1) ? L.tp1 : null,
         tp2: L && Number.isFinite(L.tp2) ? L.tp2 : null,
