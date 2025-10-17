@@ -77,11 +77,11 @@
       .replace(/[：:]/g, ':')
       .replace(/\u200f|\u200e/g, ''); // RTL marks
 
-    // Try explicit TP1/TP2 fields
-    const mTP1 = t.match(/TP1\s*:\s*([0-9,.\-]+)/i);
-    const mTP2 = t.match(/TP2\s*:\s*([0-9,.\-]+)/i);
-    // Combined "TP1/TP2: X , Y" pattern
-    const mTPs = t.match(/TP1\/TP2\s*:\s*[^0-9\-]*([0-9,.\-]+)\s*[,/]\s*([0-9,.\-]+)/i);
+    // ⬇️ التعديل الوحيد: قبول "TP 1" و "TP 2" إضافةً إلى "TP1/TP2" ⬇️
+    const mTP1 = t.match(/TP\s*1\s*:\s*([0-9,.\-]+)/i);
+    const mTP2 = t.match(/TP\s*2\s*:\s*([0-9,.\-]+)/i);
+    const mTPs = t.match(/TP\s*1\s*\/\s*TP\s*2\s*:\s*[^0-9\-]*([0-9,.\-]+)\s*[,/]\s*([0-9,.\-]+)/i);
+    // ⬆️ نهاية التعديل ⬆️
 
     const mSL  = t.match(/\bSL\s*:\s*([0-9,.\-]+)/i);
     const mEntry = (
