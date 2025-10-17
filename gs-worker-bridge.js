@@ -77,15 +77,16 @@
       .replace(/[：:]/g, ':')
       .replace(/\u200f|\u200e/g, ''); // RTL marks
 
-    // ---- التعديل: قبول صيغ TP1/TP 1/TP١ وأيضاً "هدف/الهدف" العربية ----
-    const rxNum = '([0-9,\\.\\-]+)';
-    const mTP1 = t.match(new RegExp('(?:TP\\s*1|TP1|TP\\s*[١1]|(?:ال)?هدف\\s*1|(?:ال)?هدف\\s*الأول|(?:ال)?الأول)\\s*[:=\\-]?\\s*' + rxNum, 'i'));
-    const mTP2 = t.match(new RegExp('(?:TP\\s*2|TP2|TP\\s*[٢2]|(?:ال)?هدف\\s*2|(?:ال)?هدف\\s*الثاني|(?:ال)?الثاني)\\s*[:=\\-]?\\s*' + rxNum, 'i'));
-    const mTPs = t.match(new RegExp('(?:TP\\s*1|TP1|TP\\s*[١1]|(?:ال)?هدف\\s*1)\\s*\\/\\s*(?:TP\\s*2|TP2|TP\\s*[٢2]|(?:ال)?هدف\\s*2)\\s*[:=\\-]?\\s*[^0-9\\-]*' + rxNum + '\\s*[,/]\\s*' + rxNum, 'i'));
-    const mSL  = t.match(/\bSL\s*[:=\-]?\s*([0-9,.\-]+)/i);
+    // Try explicit TP1/TP2 fields
+    const mTP1 = t.match(/TP1\s*:\s*([0-9,.\-]+)/i);
+    const mTP2 = t.match(/TP2\s*:\s*([0-9,.\-]+)/i);
+    // Combined "TP1/TP2: X , Y" pattern
+    const mTPs = t.match(/TP1\/TP2\s*:\s*[^0-9\-]*([0-9,.\-]+)\s*[,/]\s*([0-9,.\-]+)/i);
+
+    const mSL  = t.match(/\bSL\s*:\s*([0-9,.\-]+)/i);
     const mEntry = (
-      t.match(/(?:سعر الدخول|Entry)\s*[:=\-]?\s*([0-9,.\-]+)/i)
-      || t.match(/آخر سعر\s*[:=\-]?\s*([0-9,.\-]+)/i)
+      t.match(/(?:سعر الدخول|Entry)\s*:\s*([0-9,.\-]+)/i)
+      || t.match(/آخر سعر\s*:\s*([0-9,.\-]+)/i)
     );
 
     let tp1 = null, tp2 = null;
@@ -121,15 +122,12 @@
         filtersRejected: false
       };
 
-      // ✅ التعديل: طبّع القيم إلى Number قبل فحوص isFinite
-      ['entry','tp1','tp2','sl','price'].forEach(k => { payload[k] = num(payload[k]); });
-
       // override from advice text if any are missing
       const P = parseAdviceLevels();
-      if (!Number.isFinite(payload.entry) && Number.isFinite(num(P.entry))) payload.entry = num(P.entry);
-      if (!Number.isFinite(payload.tp1)   && Number.isFinite(num(P.tp1)))   payload.tp1   = num(P.tp1);
-      if (!Number.isFinite(payload.tp2)   && Number.isFinite(num(P.tp2)))   payload.tp2   = num(P.tp2);
-      if (!Number.isFinite(payload.sl)    && Number.isFinite(num(P.sl)))    payload.sl    = num(P.sl);
+      if (!Number.isFinite(payload.entry) && Number.isFinite(P.entry)) payload.entry = P.entry;
+      if (!Number.isFinite(payload.tp1)   && Number.isFinite(P.tp1))   payload.tp1   = P.tp1;
+      if (!Number.isFinite(payload.tp2)   && Number.isFinite(P.tp2))   payload.tp2   = P.tp2;
+      if (!Number.isFinite(payload.sl)    && Number.isFinite(P.sl))    payload.sl    = P.sl;
 
       const r = await fetch(WORKER_URL, {
         method:'POST', headers:{'content-type':'application/json'},
