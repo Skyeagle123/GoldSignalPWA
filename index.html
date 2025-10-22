@@ -103,20 +103,7 @@
 
       <!-- Auto فوق Precise -->
       <div>
-        
-<!-- وضع الإشارات (سريع/حذر/ذكي) -->
-<div id="gs-mode-toggle" class="row-wrap" style="margin:8px 0 4px 0;gap:8px">
-  <button type="button" data-mode="fast" class="pill">سريع</button>
-  <button type="button" data-mode="safe" class="pill">حذر</button>
-  <button type="button" data-mode="auto" class="pill">ذكي (تلقائي)</button>
-</div>
-<div class="hint" id="gs-mode-legend" style="margin-top:-4px">
-  <div><b>سريع:</b> EMA + MACD + RSI — تعديل يدوي مسموح</div>
-  <div><b>حذر:</b> تلقائي حسب السوق (ترند ⇒ EMA+MACD+RSI+BB، رينج ⇒ BB+Stoch+RSI) — التعديل معطّل</div>
-  <div><b>ذكي:</b> يقترح مرّة حسب السوق، ثم تقدر تعدّل بحرّية</div>
-</div>
-
-<label class="muted"><input id="autoInd" type="checkbox"> Auto indicators (context-aware)</label>
+        <label class="muted"><input id="autoInd" type="checkbox"> Auto indicators (context-aware)</label>
         <div class="hint">إذا مُفعّل: يختار المؤشرات تلقائيًا بحسب الترند/التذبذب ويعلّم عليها.</div>
       </div>
 
@@ -341,7 +328,6 @@
 </div>
 
 <script src="app.js?v=1"></script>
-
 <script src="mobile-debug.js?v=1"></script>
 <script src="indicators-bridge-plus.js?v=1"></script>
 <script src="gs-btns-bridge.js?v=1"></script>
@@ -354,7 +340,5 @@
     }catch(e){ /* no-op */ }
   })();
 </script>
-
-<script src="gs-modes-patch.js?v=3"></script>
 </body>
 </html>
