@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<title>إشارات الذهب • GoldSignals</title>
+<meta content="dark" name="color-scheme"/>
+<style>
+    /* ثابت: عمودان جنب بعض حتى على الشاشات الصغيرة */
+    .grid-two-fixed{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
+
+    :root{--bg:#0b1220;--card:#0f172a;--muted:#9ca3af;--text:#e5e7eb;--accent:#38bdf8;--good:#10b981;--bad:#ef4444;--warn:#f59e0b;}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans",Ubuntu,"Droid Sans";background:var(--bg);color:var(--text)}
+    header{position:sticky;top:0;z-index:10;background:rgba(11,18,32,.85);backdrop-filter:blur(6px);border-bottom:1px solid #1f2937}
+    .wrap{max-width:1100px;margin:0 auto;padding:16px}
+    h1{margin:10px 0;font-size:20px}
+    .muted{color:var(--muted)}
+    .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+    .grid-compact{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+    .row{display:flex;gap:12px}
+    .row-wrap{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+    .card{background:var(--card);border:1px solid #1f2937;border-radius:14px;padding:14px;margin:14px 0}
+    .pill, button{background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:999px;padding:10px 14px;cursor:pointer}
+    .pill:hover{background:#243042}
+    input,select{width:100%;padding:10px;border-radius:12px;border:1px solid #334155;background:#0b1324;color:#e5e7eb}
+    label{display:block;margin:4px 0 6px}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap}
+    .tabs .t{padding:8px 10px;border-radius:999px;border:1px solid #334155;background:#111827;color:#e5e7eb;cursor:pointer}
+    .tabs .t.active{background:#0ea5e9;border-color:#38bdf8}
+    .kpi{font-size:26px;font-weight:700}
+    table{width:100%;border-collapse:separate;border-spacing:0 6px}
+    th,td{padding:8px 10px;text-align:center}
+    thead th{color:#cbd5e1;font-weight:600;border-bottom:1px solid #263244}
+    tbody tr{background:#0c1528;border:1px solid #1d293c}
+    canvas{width:100%;height:280px;background:#0b1220;border:1px solid #21314a;border-radius:12px}
+    .hint{font-size:12px;color:#7c8aa0}
+    .tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid #334155;color:#cbd5e1}
+    #gsPanel{position:fixed;top:12px;right:12px;z-index:2147483647;display:flex;gap:8px}
+    #gsPanel button{padding:8px 10px;border-radius:10px;background:#2b3a60;color:#e6eef9;border:1px solid #3a4f7a}
+    .subhead{margin:8px 0 2px;font-size:14px;color:#cbd5e1}
+    .divider{height:1px;background:#1f2937;margin:10px 0}
+
+    /* Pivot أفقي */
+    .pivot-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+    .pivot-col{background:#0c1528;border:1px solid #1d293c;border-radius:12px;padding:10px;text-align:center}
+    .pivot-col .lbl{color:#cbd5e1;font-size:12px;margin-bottom:4px}
+    .pivot-col .val{font-weight:700}
+
+    /* ↓↓↓ تعديل محاذاة الـ checkbox ليكون أمام النص وعلى نفس السطر ↓↓↓ */
+    label.muted{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      white-space:nowrap;
+      margin:4px 0;     /* يحافظ على نفس الهوامش العامة */
+    }
+    label.muted input[type="checkbox"]{
+      flex:0 0 auto;
+      inline-size:18px;
+      block-size:18px;
+      margin:0;
+      accent-color: var(--accent);
+    }
+    /* في حال كانت المساحة ضيقة بالموبايل */
+    .row-wrap label.muted{white-space:normal}
+  </style>
+<style>
+/* --- GS spacing tweaks (non-invasive) --- */
+.card.tight { margin: 8px 0 !important; }
+.row.tags-tight { gap: 6px !important; }
+</style>
+</head>
+<body>
+<header>
+<div class="wrap"><h1>الذهب • <span class="muted">GoldSignals</span></h1></div>
+</header>
+<main class="wrap">
+<!-- إعدادات البيانات -->
+<div class="tight card" data-gs="market-state-row">
+<h3>إعدادات البيانات</h3>
+<!-- أزرار CSV -->
+<div class="row-wrap" id="csvControls" style="margin:12px 0;"></div>
+<!-- عناصر الإعدادات (أفقي/مرن) -->
+<div class="grid-compact">
+<!-- رابط CSV -->
+<div>
+<label>رابط CSV للأسعار (اختياري):</label>
+<input id="csvInput" placeholder="اتركه فاضي لاستخدام XAUUSD_5min.csv من نفس المجلد"/>
+<div class="hint">إذا تُرك فاضي سيتم تلقائيًا استعمال <code>XAUUSD_5min.csv</code>.</div>
+</div>
+<!-- الإطار الزمني -->
+<div>
+<label>الإطار الزمني:</label>
+<div class="tabs">
+<button class="t" id="tf5">5 دقائق</button>
+<button class="t" id="tf30">30 دقيقة</button>
+<button class="t" id="tf60">ساعة</button>
+<button class="t" id="tfD">(NY) يوم</button>
+</div>
+</div>
+<!-- Auto فوق Precise -->
+<div>
+<label class="muted"><input id="autoInd" type="checkbox"/> Auto indicators (context-aware)</label>
+<div class="hint">إذا مُفعّل: يختار المؤشرات تلقائيًا بحسب الترند/التذبذب ويعلّم عليها.</div>
+</div>
+<!-- Precise + MTF + الفلاتر تحت MTF -->
+<div>
+<label class="muted"><input id="proMode" type="checkbox"/> وضع دقيق (Precise)</label>
+<label class="muted"><input checked="" id="mtfConfirm" type="checkbox"/> تأكيد متعدد الأطر (MTF)</label>
+<div class="row-wrap" style="margin-top:8px">
+<label class="muted"><input id="toggleNyHours" type="checkbox"/> تعطيل فلتر ساعات نيويورك</label>
+<label class="muted"><input id="togglePivotFilter" type="checkbox"/> تعطيل فلتر الاقتراب من Pivot</label>
+</div>
+<small class="muted" id="nyFilterNote" style="display:block;opacity:.85;margin-top:4px">
+            عند التفعيل: سيتم <b>تعطيل</b> فلتر ساعات نيويورك
+          </small>
+<small class="muted" id="pivotFilterNote" style="display:block;opacity:.85">
+            عند التفعيل: سيتم <b>تعطيل</b> فلتر القرب من محاور Pivot
+          </small>
+</div>
+<!-- زر التشغيل -->
+<div style="display:flex;align-items:flex-end">
+<button class="pill" id="runBtn">حساب الإشارات الآن</button>
+</div>
+</div>
+</div>
+<!-- السعر الحي + الملخّص + المؤشرات القريبة -->
+<div class="card">
+<div class="grid">
+<div>
+<div class="muted">السعر الحي</div>
+<div class="kpi" id="livePrice">—</div>
+<div class="hint" id="liveTime">—</div>
+</div>
+<div>
+<div class="muted">الملخّص:</div>
+<div id="summaryText" style="font-size:20px;font-weight:700">—</div>
+</div>
+<div>
+<div class="muted">المؤشرات</div>
+<div class="row tags-tight" style="gap:10px;flex-wrap:wrap">
+<span class="tag">RSI: <b id="indRSI">—</b></span>
+<span class="tag">MACD: <b id="indMACD">—</b></span>
+<span class="tag">EMA سريع: <b id="indEMAF">—</b></span>
+<span class="tag">EMA بطيء: <b id="indEMAS">—</b></span>
+<span class="tag">Stoch: <b id="indStoch">—</b></span>
+<span class="tag">BB: <b id="indBB">—</b></span>
+</div>
+</div>
+</div>
+</div>
+<!-- الشارت -->
+<div class="card">
+<h3>الرسم البياني (دخول/خروج/SL/TP)</h3>
+<canvas aria-label="chart" id="tradeChart"></canvas>
+<div class="hint">• الأزرق = دخول • الأخضر = TP1/TP2 • الأحمر = SL • الأبيض = السعر الحي (Live).</div>
+</div>
+<!-- النصيحة مباشرة تحت الشارت -->
+<div class="card">
+<h3 style="display:flex;align-items:center;gap:8px">نصيحة الدخول/الخروج <span id="mtfBadge"></span></h3>
+<div id="adviceText">—</div>
+<button class="pill" id="sendAlertBtn" style="margin-top:8px">إرسال تنبيه تلغرام يدويًا</button>
+</div>
+<!-- الدعم والمقاومة تحت النصيحة -->
+<div class="card">
+<h3>الدعم والمقاومة (Pivot) • على يوم نيويورك</h3>
+<div class="pivot-grid">
+<div class="pivot-col">
+<div class="lbl">Pivot</div><div class="val" id="pivotP">—</div>
+</div>
+<div class="pivot-col">
+<div class="lbl">R1</div><div class="val" id="r1">—</div>
+<div class="divider" style="margin:8px 0"></div>
+<div class="lbl">S1</div><div class="val" id="s1">—</div>
+</div>
+<div class="pivot-col">
+<div class="lbl">R2</div><div class="val" id="r2">—</div>
+<div class="divider" style="margin:8px 0"></div>
+<div class="lbl">S2</div><div class="val" id="s2">—</div>
+</div>
+<div class="pivot-col">
+<div class="lbl">R3</div><div class="val" id="r3">—</div>
+<div class="divider" style="margin:8px 0"></div>
+<div class="lbl">S3</div><div class="val" id="s3">—</div>
+</div>
+</div>
+</div>
+<!-- الإعدادات الفنية (المؤشرات هنا كما كانت) -->
+<div class="card">
+<h3>الإعدادات الفنية</h3>
+<!-- أرقام أساسية -->
+<div class="grid grid-two-fixed">
+<div><label>EMA سريع</label><input id="emaFast" min="2" type="number" value="12"/></div>
+<div><label>EMA بطيء</label><input id="emaSlow" min="3" type="number" value="26"/></div>
+<div><label>RSI فترة</label><input id="rsiPeriod" min="2" type="number" value="14"/></div>
+<div><label>ATR فترة</label><input id="atrPeriod" min="2" type="number" value="14"/></div>
+<div><label>SL × ATR</label><input id="slMult" step="0.1" type="number" value="1.5"/></div>
+<div><label>TP1 × ATR</label><input id="tp1Mult" step="0.1" type="number" value="1.0"/></div>
+<div><label>TP2 × ATR</label><input id="tp2Mult" step="0.1" type="number" value="2.0"/></div>
+<div><label>ATR% حد أدنى</label><input id="atrMinPct" step="0.01" type="number" value="0.05"/></div>
+<div><label>ATR% حد أقصى</label><input id="atrMaxPct" step="0.01" type="number" value="0.8"/></div>
+<div><label>حجم الحساب $</label><input id="acctSize" step="1" type="number" value="10000"/></div>
+<div><label>المخاطرة % لكل صفقة</label><input id="riskPct" step="0.1" type="number" value="1.0"/></div>
+</div>
+<div class="divider"></div>
+<!-- المؤشرات (كما كانت وبنفس الـIDs) -->
+<div class="subhead">المؤشرات</div>
+<div class="grid">
+<div>
+<label class="muted"><input checked="" id="useRSI" type="checkbox"/> تفعيل RSI</label>
+<div class="hint">يعتمد على فترة RSI المحددة أعلاه.</div>
+</div>
+<div>
+<label class="muted"><input checked="" id="useMACD" type="checkbox"/> تفعيل MACD</label>
+<div class="hint">يستعمل EMA(12/26) + Signal(9).</div>
+</div>
+<div>
+<label class="muted"><input checked="" id="useEMA" type="checkbox"/> تفعيل اتجاه EMA (12/26)</label>
+<div class="hint">شراء إذا EMA سريع &gt; بطيء والعكس للبيع.</div>
+</div>
+<div>
+<label class="muted"><input id="useStoch" type="checkbox"/> تفعيل Stochastic</label>
+<div class="row">
+<div style="flex:1"><label>%K</label><input id="stochK" type="number" value="14"/></div>
+<div style="flex:1"><label>%D</label><input id="stochD" type="number" value="3"/></div>
+</div>
+</div>
+<div>
+<label class="muted"><input id="useBB" type="checkbox"/> تفعيل Bollinger Bands</label>
+<div class="row">
+<div style="flex:1"><label>الفترة</label><input id="bbPeriod" type="number" value="20"/></div>
+<div style="flex:1"><label>STD</label><input id="bbStd" step="0.1" type="number" value="2"/></div>
+</div>
+</div>
+</div>
+</div>
+<!-- تنبيه اقتراب السعر -->
+<div class="card">
+<h3>تنبيه اقتراب السعر من نقطة الدخول</h3>
+<label class="muted"><input id="alertEnable" type="checkbox"/> تفعيل التنبيه</label>
+<div class="grid">
+<div>
+<label>مسافة الاقتراب (بالدولار)</label>
+<input id="alertDistance" step="0.1" type="number" value="0.5"/>
+<div class="hint">نأخذ تلقائيًا الأكبر بين القيمة هنا و 0.25×ATR.</div>
+</div>
+</div>
+</div>
+<!-- البيانات الأخيرة -->
+<div class="card">
+<h3>البيانات الأخيرة</h3>
+<div style="overflow:auto">
+<table>
+<thead>
+<tr>
+<th>التاريخ</th><th>الوقت (محلي)</th><th>السعر</th><th>الإشارة</th><th>RSI</th><th>MACD</th><th>EMA سريع</th>
+</tr>
+</thead>
+<tbody id="rowsBody"></tbody>
+</table>
+</div>
+</div>
+<!-- Backtest -->
+<div class="card">
+<h3>اختبار الاستراتيجية (Backtest)</h3>
+<div class="grid">
+<div>
+<label>ملف CSV (5 دقائق):</label>
+<input accept=".csv" id="btCsv" type="file"/>
+<div class="hint">تنسيق مفضّل: <code>Symbol,Date,Time,Open,High,Low,Close</code> أو تاريخ/سعر.</div>
+</div>
+<div>
+<label>الإطار الأساسي:</label>
+<select id="btTf">
+<option value="5">5 دقائق</option>
+<option value="30">30 دقيقة</option>
+<option value="60">ساعة</option>
+<option value="1440">يوم (NY)</option>
+</select>
+</div>
+<div>
+<label class="muted"><input checked="" id="btStrict" type="checkbox"/> Strict Filters</label>
+<label class="muted"><input checked="" id="btWalk" type="checkbox"/> Walk-Forward (3-Fold)</label>
+</div>
+<div>
+<label>حد أقصى مخاطرة يومية %</label>
+<input id="btDailyRiskCap" step="0.1" type="number" value="3.0"/>
+</div>
+<div style="display:flex;align-items:flex-end">
+<button class="pill" id="btRun">تشغيل الاختبار</button>
+</div>
+</div>
+<div class="row" style="margin-top:10px;gap:20px;flex-wrap:wrap">
+<div style="min-width:260px"><div class="muted" id="btStats">—</div></div>
+<div style="flex:1;min-width:260px"><canvas id="btEquity" style="width:100%;height:200px"></canvas></div>
+</div>
+<div style="overflow:auto;margin-top:10px">
+<table>
+<thead><tr><th>#</th><th>تاريخ (محلي)</th><th>Side</th><th>Entry</th><th>Exit</th><th>R</th><th>PnL$</th></tr></thead>
+<tbody id="btRows"></tbody>
+</table>
+</div>
+</div>
+</main>
+<div aria-hidden="false" id="gsPanel">
+<button id="btnImportCsv">📥 استيراد CSV</button>
+<button id="btnExportCsv">💾 تنزيل CSV المدموج</button>
+<input accept=".csv" id="hiddenCsvFile" style="display:none" type="file"/>
+</div>
+<script src="app.js?v=merge1"></script>
+<script src="mobile-debug.js?v=3"></script>
+<script src="indicators-bridge-plus.js?v=5.3"></script>
+<script src="gs-btns-bridge.js?v=3"></script>
+<script src="gs-worker-bridge.js?v=9"></script>
+<script src="gs-market-metrics.js?v=merge1"></script>  
+<script src="gs-modes-patch.js?v=3"></script>  
+<script>
+  (function(){
+    try{
+      if ('serviceWorker' in navigator) {  }
+      if ('Notification' in window && Notification.permission === 'default') { Notification.requestPermission(); }
+    }catch(e){ /* no-op */ }
+  })();
+</script>
+<script src="gs-state-diagnostics.js?v=3"></script> 
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js', { scope: './' })
+    .catch(err => console.error('SW register failed:', err));
+}
+</script>
+
+
+<script>
+if (typeof window.wireExportBtn !== 'function') {
+  window.wireExportBtn = function(){ /* no-op */ };
+}
+</script>
+
+</body>
+</html>
