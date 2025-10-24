@@ -1,4 +1,4 @@
-/* gs-market-metrics.js v5 — no-DOM-injection, same API/events */
+/* gs-market-metrics.js v5.1 — safe render inside settings card (no body-prepend) */
 (function () {
   const W = window;
   const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -65,10 +65,26 @@
     return "trend";
   }
 
-  // Do NOT inject/create any DOM. Leave UI intact.
-  function renderLine(_payload) {
-    // intentionally no-op to avoid writing "BB% / ATR%" anywhere
-    // If you ever need to show it, explicitly target an existing node by id/class from your app.
+  // ✅ ارسم داخل بطاقة الإعدادات فقط (ولا تلمس <body> مباشرة)
+  function renderLine({ mode, bbPct, atrPct }) {
+    // ابحث عن البطاقة
+    const card = document.querySelector('[data-gs="market-state-row"]') || document.querySelector('main .card');
+    if (!card) return;
+
+    // عنصر السطر
+    let el = card.querySelector('#marketMetricsLine');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'marketMetricsLine';
+      el.className = 'hint';
+      el.style.marginTop = '8px';
+      card.appendChild(el);
+    }
+
+    const modeAr = mode === 'trend' ? 'ترند' : mode === 'range' ? 'نطاق' : 'غير معلوم';
+    const bbTxt  = `BB%: ${fmt(bbPct)}`;
+    const atrTxt = `ATR%: ${fmt(atrPct)}`;
+    el.textContent = `حالة السوق: ${modeAr} • ${bbTxt} • ${atrTxt}`;
   }
 
   function pushToState(bbPct, atrPct) {
@@ -84,11 +100,11 @@
   }
 
   function update(candles) {
-    const { bbPct, band } = calcBBPct(candles);
-    const atrPct = calcATRpct(candles);
-    const mode   = classify(bbPct, atrPct);
+    const { bbPct } = calcBBPct(candles);
+    const atrPct    = calcATRpct(candles);
+    const mode      = classify(bbPct, atrPct);
     pushToState(bbPct, atrPct);
-    renderLine({ mode, bbPct, atrPct, band });
+    renderLine({ mode, bbPct, atrPct });
   }
 
   function grabCandles() {
