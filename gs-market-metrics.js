@@ -107,9 +107,12 @@
   }
 
   function grabCandles() {
-    const g = W.gs || W.GS || {};
-    return g.candles || g.data || g.series || W.__gsCandles || null;
-  }
+  const g = W.gs || W.GS || {};
+  // أضف السطر التالي أولاً لأنه هو المكان الحقيقي للشموع
+  if (Array.isArray(W.__seriesForExport) && W.__seriesForExport.length > 10)
+    return W.__seriesForExport;
+  return g.candles || g.data || g.series || W.__gsCandles || null;
+}
 
   W.addEventListener("gs:candles:updated", e => update(e.detail?.candles || grabCandles()));
   W.addEventListener("gs:state:changed",   () => update(grabCandles()));
