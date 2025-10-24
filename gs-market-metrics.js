@@ -1,10 +1,10 @@
-/* gs-market-metrics.js v5.1 — safe render inside settings card (no body-prepend) */
+/* gs-market-metrics.js v5.2 — render-safe + dual events */
 (function () {
   const W = window;
   const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
-  const fmt = v => (v == null || Number.isNaN(v) ? "—" : Number(v).toFixed(2));
+  const fmt  = v => (v == null || Number.isNaN(v) ? "—" : Number(v).toFixed(2));
 
-  // --- helpers: SMA, STDEV, ATR ---
+  // --- helpers ---
   function sma(arr, p) {
     if (!arr || arr.length < p) return null;
     let s = 0;
@@ -15,9 +15,7 @@
     if (!arr || arr.length < p) return null;
     const m = sma(arr, p);
     let s = 0;
-    for (let i = arr.length - p; i < arr.length; i++) {
-      const d = arr[i] - m; s += d * d;
-    }
+    for (let i = arr.length - p; i < arr.length; i++) { const d = arr[i] - m; s += d * d; }
     return Math.sqrt(s / p);
   }
   function calcBBPct(candles, period = 20, std = 2) {
@@ -43,16 +41,11 @@
     let trs = [];
     for (let i = 1; i < candles.length; i++) {
       const cur = candles[i], prev = candles[i - 1];
-      const tr = Math.max(
-        H(cur) - L(cur),
-        Math.abs(H(cur) - C(prev)),
-        Math.abs(L(cur) - C(prev))
-      );
+      const tr = Math.max(H(cur) - L(cur), Math.abs(H(cur) - C(prev)), Math.abs(L(cur) - C(prev)));
       trs.push(tr);
     }
     if (trs.length < period) return null;
-    let sum = 0;
-    for (let i = trs.length - period; i < trs.length; i++) sum += trs[i];
+    let sum = 0; for (let i = trs.length - period; i < trs.length; i++) sum += trs[i];
     const atr = sum / period;
     const lastClose = C(candles[candles.length - 1]);
     if (!(lastClose > 0)) return null;
@@ -65,37 +58,43 @@
     return "trend";
   }
 
-  // ✅ ارسم داخل بطاقة الإعدادات فقط (ولا تلمس <body> مباشرة)
+  // ---- rendering (no body-prepend) ----
   function renderLine({ mode, bbPct, atrPct }) {
-    // ابحث عن البطاقة
-    const card = document.querySelector('[data-gs="market-state-row"]') || document.querySelector('main .card');
-    if (!card) return;
+    // 1) لو عندك عقدة جاهزة من app.js (mktStatsInline) استعملها
+    let el = document.getElementById("mktStatsInline")
+          || document.getElementById("marketMetricsLine");
 
-    // عنصر السطر
-    let el = card.querySelector('#marketMetricsLine');
+    // 2) وإلا حطّها جوّا بطاقة الإعدادات فقط
     if (!el) {
-      el = document.createElement('div');
-      el.id = 'marketMetricsLine';
-      el.className = 'hint';
-      el.style.marginTop = '8px';
-      card.appendChild(el);
+      const card = document.querySelector('[data-gs="market-state-row"]') || document.querySelector('main .card');
+      if (card) {
+        el = document.createElement('div');
+        el.id = 'marketMetricsLine';
+        el.className = 'hint';
+        el.style.marginTop = '8px';
+        card.appendChild(el);
+      }
+    }
+    if (el) {
+      const modeAr = mode === 'trend' ? 'ترند' : mode === 'range' ? 'نطاق' : 'غير معلوم';
+      el.textContent = `حالة السوق: ${modeAr} • BB%: ${fmt(bbPct)} • ATR%: ${fmt(atrPct)}`;
     }
 
-    const modeAr = mode === 'trend' ? 'ترند' : mode === 'range' ? 'نطاق' : 'غير معلوم';
-    const bbTxt  = `BB%: ${fmt(bbPct)}`;
-    const atrTxt = `ATR%: ${fmt(atrPct)}`;
-    el.textContent = `حالة السوق: ${modeAr} • ${bbTxt} • ${atrTxt}`;
+    // 3) حدّث شارة BB داخل قسم "المؤشرات" إذا موجودة
+    const bbChip = document.getElementById('indBB');
+    if (bbChip) bbChip.textContent = fmt(bbPct);
   }
 
-  function pushToState(bbPct, atrPct) {
+  function pushEvents(bbPct, atrPct) {
     try {
       if (typeof W.gsSet === "function") {
-        if (bbPct != null) W.gsSet("market.bbPct", +bbPct.toFixed(2));
-        if (atrPct != null) W.gsSet("market.atrPct", +atrPct.toFixed(2));
+        if (bbPct != null) W.gsSet("market.bbPct", +Number(bbPct).toFixed(2));
+        if (atrPct != null) W.gsSet("market.atrPct", +Number(atrPct).toFixed(2));
       }
-      W.dispatchEvent(new CustomEvent("gs:market:metrics", {
-        detail: { bbPct, atrPct }
-      }));
+      // الحدث الأصلي
+      W.dispatchEvent(new CustomEvent("gs:market:metrics", { detail: { bbPct, atrPct } }));
+      // الجديد: ليتوافق مع app.js الحالي
+      W.dispatchEvent(new CustomEvent("gs:state-metrics",  { detail: { bbPct:bbPct, atrPct:atrPct, bbPerc:bbPct, atrPerc:atrPct } }));
     } catch {}
   }
 
@@ -103,7 +102,7 @@
     const { bbPct } = calcBBPct(candles);
     const atrPct    = calcATRpct(candles);
     const mode      = classify(bbPct, atrPct);
-    pushToState(bbPct, atrPct);
+    pushEvents(bbPct, atrPct);
     renderLine({ mode, bbPct, atrPct });
   }
 
@@ -116,3 +115,4 @@
   W.addEventListener("gs:state:changed",   () => update(grabCandles()));
   setTimeout(() => update(grabCandles()), 600);
 })();
+
