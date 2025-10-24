@@ -1853,7 +1853,12 @@ document.addEventListener('visibilitychange', function(){
         bbPct = 100 * ( (+bb.up[i]) - (+bb.dn[i]) ) / (+bb.mid[i]);
       }
       if (isFinite(atrPct) || isFinite(bbPct)) {
-        window.dispatchEvent(new CustomEvent('gs:state-metrics', { detail: { atrPct: atrPct, bbPct: bbPct } }));
+      window.dispatchEvent(new CustomEvent('gs:state-metrics', {
+  detail: {
+    atrPct: atrPct, bbPct: bbPct,   // للأسماء القديمة
+    atrPerc: atrPct, bbPerc: bbPct  // للأسماء التي تقرأها الواجهة
+  }
+})); 
       }
     }catch(e){ /* no-op */ }
   }
