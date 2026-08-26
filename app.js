@@ -14,6 +14,7 @@ const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';
 const LIVE_REFRESH_SEC = 2;
 const LIVE_ARRIVAL_MAX_MS = 20000;
 const LIVE_MARKET_MAX_MS = 90000;
+const BASE_DATA_MAX_AGE_MS = 30*60*1000;
 const TABLE_ROWS       = 80;
 
 const $=(id)=>document.getElementById(id);
@@ -58,6 +59,8 @@ let PRO_MODE=false, MTF_CONFIRM=true, USE_STOCH=false, STOCH_K=14, STOCH_D=3, US
 const NY_TRADE_START={hour:8, minute:0}, NY_TRADE_END={hour:17, minute:0};
 let PIVOT_MIN_DISTANCE=0.7;
 let currentTF=5, LAST_LIVE=null, __cache=null, __alertLockUntil=0;
+window.__baseDataFresh=false;
+window.__marketDataFresh=false;
 
 function tfLabel(tf){return tf===5?'5 دقائق':tf===30?'30 دقيقة':tf===60?'ساعة':tf===1440?'يوم (NY)':tf+'m';}
 function setActiveTF(tf){currentTF=tf;[elTf5,elTf30,elTf60,elTfD].forEach(b=>b?.classList?.remove('active'));
@@ -98,6 +101,44 @@ async function fetchCsv(url){
     const r=await fetch(full,{cache:'no-store',signal:ctl.signal}); if(!r.ok) throw new Error(`CSV HTTP ${r.status}`);
     const rows=parseCsv(await r.text()); if(!rows.length) throw new Error('CSV فارغ'); return rows;
   }finally{clearTimeout(to);}
+}
+function normalizeWorkerBars(payload){
+  const source=Array.isArray(payload)?payload:(Array.isArray(payload?.bars)?payload.bars:(Array.isArray(payload?.data)?payload.data:[]));
+  return source.map(row=>{
+    let ts=typeof row?.t==='string'?Date.parse(row.t):Number(row?.t ?? row?.time);
+    if(Number.isFinite(ts)&&ts<1e12) ts*=1000;
+    const open=Number(row?.o ?? row?.open), high=Number(row?.h ?? row?.high);
+    const low=Number(row?.l ?? row?.low), close=Number(row?.c ?? row?.close);
+    return {ts,open,high,low,close};
+  }).filter(row=>[row.ts,row.open,row.high,row.low,row.close].every(Number.isFinite)&&row.high>=row.low)
+    .sort((a,b)=>a.ts-b.ts);
+}
+async function fetchWorkerBars(){
+  const ctl=new AbortController(), to=setTimeout(()=>ctl.abort(),5000);
+  try{
+    const url='https://goldsignalsx-worker.samer-mourtada.workers.dev/bars?tf=5m&limit=2000&t='+Date.now();
+    const r=await fetch(url,{cache:'no-store',mode:'cors',signal:ctl.signal});
+    if(!r.ok) throw new Error(`Worker bars HTTP ${r.status}`);
+    const rows=normalizeWorkerBars(await r.json());
+    if(rows.length<60) throw new Error('Worker bars غير كافية');
+    return {rows,source:r.headers.get('x-gsx-source')||'GoldSignalsX Worker'};
+  }finally{clearTimeout(to);}
+}
+async function loadBaseRows(customUrl){
+  if(customUrl) return {rows:await fetchCsv(customUrl),source:'CSV مخصص'};
+  try{return await fetchWorkerBars();}
+  catch(error){
+    console.warn('Worker bars fallback:',error);
+    return {rows:await fetchCsv(DEFAULT_5M_CSV),source:'CSV احتياطي'};
+  }
+}
+function updateBaseFreshness(rows,source){
+  const lastTs=Number(rows?.[rows.length-1]?.ts), age=Number.isFinite(lastTs)?Math.max(0,Date.now()-lastTs):Infinity;
+  window.__baseDataTimeMs=Number.isFinite(lastTs)?lastTs:0;
+  window.__baseDataSource=source||'—';
+  window.__baseDataFresh=Number.isFinite(age)&&age<=BASE_DATA_MAX_AGE_MS;
+  renderLiveStatus();
+  return {lastTs,age,fresh:window.__baseDataFresh};
 }
 function aggregateOHLC(rows, minutes){
   const ms=minutes*60*1000, map=new Map();
@@ -352,14 +393,18 @@ function renderLiveStatus(){
   const now=Date.now(), received=Number(window.__liveTimeMs), market=Number(window.__marketTimeMs);
   const arrivalAge=Number.isFinite(received)&&received>0?Math.max(0,now-received):Infinity;
   const marketAge=Number.isFinite(market)&&market>0?Math.max(0,now-market):null;
-  const fresh=arrivalAge<=LIVE_ARRIVAL_MAX_MS && (marketAge==null || marketAge<=LIVE_MARKET_MAX_MS);
+  const baseTime=Number(window.__baseDataTimeMs);
+  const baseAge=Number.isFinite(baseTime)&&baseTime>0?Math.max(0,now-baseTime):Infinity;
+  const baseFresh=window.__baseDataFresh===true;
+  const fresh=baseFresh && arrivalAge<=LIVE_ARRIVAL_MAX_MS && (marketAge==null || marketAge<=LIVE_MARKET_MAX_MS);
   window.__marketDataFresh=fresh;
 
   const source=window.__liveSource||'—';
   const arrivalText=Number.isFinite(arrivalAge)?`${Math.floor(arrivalAge/1000)}ث`:'—';
   const marketText=marketAge==null?'غير متاح':`${Math.floor(marketAge/1000)}ث`;
-  const state=fresh?(window.__liveFallback?'احتياطي':'مباشر'):(Number.isFinite(arrivalAge)?'متأخر':'منقطع');
-  elLiveStatus.textContent=`المصدر: ${source} • الحالة: ${state} • عمر الوصول: ${arrivalText} • تأخير السوق: ${marketText}`;
+  const baseText=Number.isFinite(baseAge)?`${Math.floor(baseAge/60000)}د`:'—';
+  const state=!baseFresh?'شموع قديمة':(fresh?(window.__liveFallback?'احتياطي':'مباشر'):(Number.isFinite(arrivalAge)?'متأخر':'منقطع'));
+  elLiveStatus.textContent=`السعر: ${source} • الشموع: ${window.__baseDataSource||'—'} (${baseText}) • الحالة: ${state} • عمر الوصول: ${arrivalText} • تأخير السوق: ${marketText}`;
   elLiveStatus.style.color=fresh?(window.__liveFallback?'#f59e0b':'#10b981'):'#ef4444';
 
   const alertButton=document.getElementById('sendAlertBtn');
@@ -523,11 +568,17 @@ function mergeLiveIntoSeries(series,tfMin,live){
 
 /* ---------------- التحليل الرئيسي ---------------- */
 function tableFrom(series,rsiArr,mac){ return series.map((p,idx)=>({ts:p.ts,date:toLocalDate(p.ts),time:toLocalTime(p.ts),price:p.close,rsi:rsiArr[idx],macd:mac.macd[idx],emaF:mac.emaF[idx]})); }
+function staleBaseAdvice(){
+  const ts=Number(window.__baseDataTimeMs);
+  const when=Number.isFinite(ts)&&ts>0?fmtLocalDateTime(ts):'غير معروف';
+  return `مراقبة فقط: تم منع النصيحة لأن بيانات الشموع قديمة أو غير متاحة. آخر شمعة: ${when} • المصدر: ${window.__baseDataSource||'—'}.`;
+}
 
 async function runAnalysis(){
   try{
     loadSettings();
-    const csvUrl=elCsvInput?.value?.trim()||''; const rows5=await fetchCsv(csvUrl);
+    const csvUrl=elCsvInput?.value?.trim()||'', loaded=await loadBaseRows(csvUrl), rows5=loaded.rows;
+    const baseState=updateBaseFreshness(rows5,loaded.source);
     const rows30=aggregateOHLC(rows5,30), rows60=aggregateOHLC(rows5,60), rowsDayNY=aggregateDailyNY(rows5);
     const base=(currentTF===30)?rows30:(currentTF===60)?rows60:(currentTF===1440)?rowsDayNY:rows5;
     const series=(LAST_LIVE)?mergeLiveIntoSeries(base,currentTF,LAST_LIVE):base;
@@ -537,12 +588,13 @@ async function runAnalysis(){
 
     const i=series.length-1, px=series[i].close;
     paintSummary(rsiArr[i],mac.macd[i],{macdPrev:mac.macd[i-1],macdSig:mac.signal[i],price:px,emaF:mac.emaF[i],emaS:mac.emaS[i]});
+    if(!baseState.fresh&&elSummaryText){elSummaryText.textContent='مراقبة فقط';elSummaryText.style.color='#ef4444';}
     paintIndicators(rsiArr[i],mac.macd[i],mac.emaF[i],mac.emaS[i],stoch?.k[i],stoch?.d[i],bb?.mid[i],bb?.up[i],bb?.dn[i]);
 
     const piv=calcPivotsFromDailyNY(rowsDayNY); paintPivots(piv);
     paintTable(tableFrom(series,rsiArr,mac));
 
-    const sig=filteredSignal(currentTF,series,rsiArr,mac,atrArr,rows5,rows30,rows60,piv,stoch,bb);
+    const sig=baseState.fresh?filteredSignal(currentTF,series,rsiArr,mac,atrArr,rows5,rows30,rows60,piv,stoch,bb):'حيادي';
     const aNow=atrArr?.[i]??0.5, emaS=mac.emaS[i]; let entry=null;
     if(sig==='شراء') entry=Math.max(px,Number.isFinite(emaS)?emaS:px);
     else if(sig==='بيع') entry=Math.min(px,Number.isFinite(emaS)?emaS:px);
@@ -555,7 +607,9 @@ async function runAnalysis(){
     window.__lastBaseSeries=base; window.__lastSeriesForChart=series; window.__lastLinesForChart=lines;
     renderTradeChart(series,lines);
 
-    if(elAdviceText) elAdviceText.textContent=buildAdvice(currentTF,series,rsiArr,mac,piv,LAST_LIVE,atrArr,rows5,rows30,rows60,stoch,bb);
+    if(elAdviceText) elAdviceText.textContent=baseState.fresh
+      ? buildAdvice(currentTF,series,rsiArr,mac,piv,LAST_LIVE,atrArr,rows5,rows30,rows60,stoch,bb)
+      : staleBaseAdvice();
     __cache={tf:currentTF,series,rsiArr,mac,piv,atrArr,rows5,rows30,rows60,stoch,bb,rowsDayNY};
 
     if(sig!=='حيادي') checkProximityAlert(lines?.entry);
@@ -567,7 +621,9 @@ function reprojectWithLive(){
   const series=mergeLiveIntoSeries(base,tf,LAST_LIVE);
   const rsiArr=rsi(series,RSI_PER), mac=macd(series,EMA_FAST,EMA_SLOW,9), atrArr=atr(series,ATR_PERIOD);
   const stoch=(elUseStoch?.checked)?stochastic(series,STOCH_K,STOCH_D):null, bb=(elUseBB?.checked)?bollinger(series,BB_PERIOD,BB_STD):null;
-  const i=series.length-1, px=series[i].close, sig=filteredSignal(tf,series,rsiArr,mac,atrArr,rows5,rows30,rows60,piv,stoch,bb), aNow=atrArr?.[i]??0.5, emaS=mac.emaS[i];
+  const i=series.length-1, px=series[i].close;
+  const sig=window.__baseDataFresh?filteredSignal(tf,series,rsiArr,mac,atrArr,rows5,rows30,rows60,piv,stoch,bb):'حيادي';
+  const aNow=atrArr?.[i]??0.5, emaS=mac.emaS[i];
   let entry=null; if(sig==='شراء') entry=Math.max(px,Number.isFinite(emaS)?emaS:px); else if(sig==='بيع') entry=Math.min(px,Number.isFinite(emaS)?emaS:px);
   entry=adjustEntry(entry,px,aNow,sig);
   const lines=(sig==='حيادي')?undefined:{entry,
@@ -575,7 +631,9 @@ function reprojectWithLive(){
     tp1: sig==='شراء'? entry+TP1_ATR_MULT*aNow: entry-TP1_ATR_MULT*aNow,
     tp2: sig==='شراء'? entry+TP2_ATR_MULT*aNow: entry-TP2_ATR_MULT*aNow};
   window.__lastSeriesForChart=series; window.__lastLinesForChart=lines; renderTradeChart(series,lines);
-  if(elAdviceText) elAdviceText.textContent=buildAdvice(tf,series,rsiArr,mac,piv,LAST_LIVE,atrArr,rows5,rows30,rows60,stoch,bb);
+  if(elAdviceText) elAdviceText.textContent=window.__baseDataFresh
+    ? buildAdvice(tf,series,rsiArr,mac,piv,LAST_LIVE,atrArr,rows5,rows30,rows60,stoch,bb)
+    : staleBaseAdvice();
   if(sig!=='حيادي') checkProximityAlert(lines?.entry);
 }
 

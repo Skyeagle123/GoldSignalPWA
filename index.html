@@ -92,7 +92,7 @@
 <div>
 <label>رابط CSV للأسعار (اختياري):</label>
 <input id="csvInput" placeholder="اتركه فاضي لاستخدام XAUUSD_5min.csv من نفس المجلد"/>
-<div class="hint">إذا تُرك فاضي سيتم تلقائيًا استعمال <code>XAUUSD_5min.csv</code>.</div>
+<div class="hint">إذا تُرك فاضي تُجلب شموع 5 دقائق مباشرةً من GoldSignalsX Worker، ويُستعمل ملف الريبو كاحتياط فقط.</div>
 </div>
 <!-- الإطار الزمني -->
 <div>
@@ -166,6 +166,7 @@
 <div class="card">
 <h3 style="display:flex;align-items:center;gap:8px">نصيحة الدخول/الخروج <span id="mtfBadge"></span></h3>
 <div id="adviceText">—</div>
+<label class="muted" style="margin-top:10px"><input id="telegramAuto" type="checkbox"/> إرسال الإشارة تلقائياً إلى Telegram</label>
 <button class="pill" id="sendAlertBtn" style="margin-top:8px">إرسال تنبيه تلغرام يدويًا</button>
 </div>
 <!-- الدعم والمقاومة تحت النصيحة -->
@@ -314,14 +315,14 @@
 <button id="btnExportCsv">💾 تنزيل CSV المدموج</button>
 <input accept=".csv" id="hiddenCsvFile" style="display:none" type="file"/>
 </div>
-<script src="app.js?v=13"></script>
-<script src="mobile-debug.js?v=13"></script>
-<script src="indicators-bridge-plus.js?v=13"></script>
-<script src="gs-btns-bridge.js?v=13"></script>
-<script src="gs-worker-bridge.js?v=13"></script>
-<script src="gs-market-metrics.js?v=13"></script>
-<script src="gs-modes-patch.js?v=13"></script>
-<script src="gs-state-diagnostics.js?v=13"></script>
+<script src="app.js?v=14"></script>
+<script src="mobile-debug.js?v=14"></script>
+<script src="indicators-bridge-plus.js?v=14"></script>
+<script src="gs-btns-bridge.js?v=14"></script>
+<script src="gs-worker-bridge.js?v=14"></script>
+<script src="gs-market-metrics.js?v=14"></script>
+<script src="gs-modes-patch.js?v=14"></script>
+<script src="gs-state-diagnostics.js?v=14"></script>
 
 <script>
 if ('serviceWorker' in navigator) {

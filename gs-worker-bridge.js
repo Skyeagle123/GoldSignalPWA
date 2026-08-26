@@ -202,6 +202,8 @@ async function notifyLocalAfterSuccess(title, body, url) {
   const __AUTO_SENT = new Map(); // key=tf -> { candleStart, side }
 
   async function maybeAutoSend(){
+    const autoToggle=document.getElementById('telegramAuto');
+    if(!autoToggle?.checked) return;
     const { side, previewOnly } = detectSideFromAdviceText();
     if (!side || previewOnly || window.__marketDataFresh === false) return;
 
@@ -210,6 +212,11 @@ async function notifyLocalAfterSuccess(title, body, url) {
     const candleStart = Math.floor(Date.now()/tfMs)*tfMs;
     const last = __AUTO_SENT.get(tf);
     if (last && last.candleStart === candleStart && last.side === side) return;
+    const storageKey=`gs_auto_alert_v13:${tf}`;
+    try{
+      const saved=JSON.parse(localStorage.getItem(storageKey)||'null');
+      if(saved?.candleStart===candleStart&&saved?.side===side) return;
+    }catch(_){}
 
     // Use send() which now fills from text if missing
     const L = window.__lastLinesForChart || null;
@@ -218,7 +225,11 @@ async function notifyLocalAfterSuccess(title, body, url) {
     try {
       const r = await send(side, entry);
       console.log('[GS][AUTO] sent', { tf, side, entry, r });
-      if (r?.ok) __AUTO_SENT.set(tf, { candleStart, side });
+      if (r?.ok){
+        const record={candleStart,side};
+        __AUTO_SENT.set(tf,record);
+        try{localStorage.setItem(storageKey,JSON.stringify(record));}catch(_){}
+      }
     } catch (e) {
       console.warn('[GS][AUTO] failed:', e);
     }
@@ -232,9 +243,20 @@ async function notifyLocalAfterSuccess(title, body, url) {
     setTimeout(maybeAutoSend, 800);
   }
 
+  function wireAutoToggle(){
+    const toggle=document.getElementById('telegramAuto');
+    if(!toggle) return;
+    try{toggle.checked=localStorage.getItem('gs_auto_telegram_enabled')==='1';}catch(_){}
+    toggle.addEventListener('change',()=>{
+      try{localStorage.setItem('gs_auto_telegram_enabled',toggle.checked?'1':'0');}catch(_){}
+      if(toggle.checked) maybeAutoSend();
+    });
+  }
+
   // Boot
   window.addEventListener('DOMContentLoaded', () => {
     wireManualButton();
+    wireAutoToggle();
     observeAdvice();
   });
 })();
