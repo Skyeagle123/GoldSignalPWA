@@ -1,22 +1,15 @@
-// Hardened Service Worker for GoldSignalPWA
-const CACHE_NAME = 'goldsSignals-shell-v2';
-const ASSETS = [
+const CACHE_NAME = 'goldsSignals-shell-v13';
+const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './icon-192.png',
-  './icon-512.png',
-  './app.js',
-  './app.js?v=3'
+  './icon.svg'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await Promise.all(ASSETS.map(async (url) => {
-      try { await cache.add(url); }
-      catch (err) { console.warn('[SW] cache skip:', url, err && err.message); }
-    }));
+    await cache.addAll(CORE_ASSETS);
     await self.skipWaiting();
   })());
 });
@@ -24,22 +17,44 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const names = await caches.keys();
-    await Promise.all(names.map((n) => { if (n !== CACHE_NAME) return caches.delete(n); }));
+    await Promise.all(names.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name)));
     await self.clients.claim();
   })());
 });
 
+async function networkFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  try {
+    const response = await fetch(request, { cache: 'no-store' });
+    if (response.ok) await cache.put(request, response.clone());
+    return response;
+  } catch (error) {
+    return (await cache.match(request)) || (await cache.match('./index.html')) || Response.error();
+  }
+}
+
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
+  const request = event.request;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+
+  const isAppAsset = request.mode === 'navigate' ||
+    ['document', 'script', 'style', 'worker'].includes(request.destination);
+
+  if (isAppAsset) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
   event.respondWith((async () => {
-    const cached = await caches.match(event.request);
+    const cache = await caches.open(CACHE_NAME);
+    const cached = await cache.match(request);
     if (cached) return cached;
-    try {
-      const fresh = await fetch(event.request);
-      return fresh;
-    } catch (e) {
-      return cached || Response.error();
-    }
+    const response = await fetch(request);
+    if (response.ok) await cache.put(request, response.clone());
+    return response;
   })());
 });
 
@@ -53,15 +68,14 @@ self.addEventListener('message', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = (event.notification && event.notification.data && event.notification.data.url) || './';
+  const target = event.notification?.data?.url || './';
   event.waitUntil((async () => {
-    const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    for (const client of allClients) {
-      if ('navigate' in client) {
-        client.focus();
-        client.navigate(target);
-        return;
-      }
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const current = clients[0];
+    if (current) {
+      await current.focus();
+      if ('navigate' in current) await current.navigate(target);
+      return;
     }
     await self.clients.openWindow(target);
   })());

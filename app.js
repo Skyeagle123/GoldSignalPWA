@@ -6,11 +6,14 @@ if (typeof window !== 'undefined' && typeof window.wireExportBtn !== 'function')
 /* ======================= GoldSignals • app.js (PRO+) ======================= */
 /* --------- إعداد عام --------- */
 const LIVE_SOURCES = [
-  'https://workerjs.samer-mourtada.workers.dev/price',  
-  'https://gold-ticks.samer-mourtada.workers.dev/price'  
+  { url:'https://goldsignalsx-worker.samer-mourtada.workers.dev/price', label:'GoldSignalsX Worker', fallback:false },
+  { url:'https://workerjs.samer-mourtada.workers.dev/price', label:'workerjs', fallback:true },
+  { url:'https://gold-ticks.samer-mourtada.workers.dev/price', label:'gold-ticks', fallback:true }
 ];
 const DEFAULT_5M_CSV   = 'XAUUSD_5min.csv';
-const LIVE_REFRESH_SEC = 1;
+const LIVE_REFRESH_SEC = 2;
+const LIVE_ARRIVAL_MAX_MS = 20000;
+const LIVE_MARKET_MAX_MS = 90000;
 const TABLE_ROWS       = 80;
 
 const $=(id)=>document.getElementById(id);
@@ -19,7 +22,7 @@ const $=(id)=>document.getElementById(id);
 const elCsvInput=$('csvInput'), elBtnRun=$('runBtn');
 const elTf5=$('tf5'), elTf30=$('tf30'), elTf60=$('tf60'), elTfD=$('tfD');
 const elProMode=$('proMode'), elMtfConfirm=$('mtfConfirm');
-const elLivePrice=$('livePrice'), elLiveTime=$('liveTime');
+const elLivePrice=$('livePrice'), elLiveTime=$('liveTime'), elLiveStatus=$('liveStatus');
 const elSummaryText=$('summaryText'), elAdviceText=$('adviceText');
 const elIndRSI=$('indRSI'), elIndMACD=$('indMACD'), elIndEMAF=$('indEMAF'), elIndEMAS=$('indEMAS');
 const elIndStoch=$('indStoch'), elIndBB=$('indBB');
@@ -338,6 +341,33 @@ ATR%: ${Number.isFinite(atrp)?nf2.format(atrp):'—'} • آخر سعر: ${nf2.f
 
 /* ---------------- رسم/واجهة ---------------- */
 function paintLive(price,ts){ if(elLivePrice&&Number.isFinite(price)) elLivePrice.textContent=nf2.format(price); if(elLiveTime&&ts) elLiveTime.textContent=fmtLocalDateTime(ts);}
+function parseMarketTime(raw){
+  let ts=typeof raw==='string'?Date.parse(raw):Number(raw);
+  if(!Number.isFinite(ts)) return null;
+  if(ts<1e12) ts*=1000;
+  return ts;
+}
+function renderLiveStatus(){
+  if(!elLiveStatus) return;
+  const now=Date.now(), received=Number(window.__liveTimeMs), market=Number(window.__marketTimeMs);
+  const arrivalAge=Number.isFinite(received)&&received>0?Math.max(0,now-received):Infinity;
+  const marketAge=Number.isFinite(market)&&market>0?Math.max(0,now-market):null;
+  const fresh=arrivalAge<=LIVE_ARRIVAL_MAX_MS && (marketAge==null || marketAge<=LIVE_MARKET_MAX_MS);
+  window.__marketDataFresh=fresh;
+
+  const source=window.__liveSource||'—';
+  const arrivalText=Number.isFinite(arrivalAge)?`${Math.floor(arrivalAge/1000)}ث`:'—';
+  const marketText=marketAge==null?'غير متاح':`${Math.floor(marketAge/1000)}ث`;
+  const state=fresh?(window.__liveFallback?'احتياطي':'مباشر'):(Number.isFinite(arrivalAge)?'متأخر':'منقطع');
+  elLiveStatus.textContent=`المصدر: ${source} • الحالة: ${state} • عمر الوصول: ${arrivalText} • تأخير السوق: ${marketText}`;
+  elLiveStatus.style.color=fresh?(window.__liveFallback?'#f59e0b':'#10b981'):'#ef4444';
+
+  const alertButton=document.getElementById('sendAlertBtn');
+  if(alertButton){
+    alertButton.disabled=!fresh;
+    alertButton.title=fresh?'':'السعر متأخر أو منقطع';
+  }
+}
 function paintIndicators(rsiVal,macdVal,emaFv,emaSv,stK,stD,bbMid,bbUp,bbDn){
   if(elIndRSI)  elIndRSI.textContent  = Number.isFinite(rsiVal)?nf2.format(rsiVal):'—';
   if(elIndMACD) elIndMACD.textContent = Number.isFinite(macdVal)?nf4.format(macdVal):'—';
@@ -426,36 +456,40 @@ function paintSummary(rsiVal,macdVal,extras){
   elSummaryText.style.color=(s==='شراء')?'#10b981':(s==='بيع')?'#ef4444':'#f59e0b';
 }
 
-/* ---------------- السعر الحي (median + timeouts) ---------------- */
-async function fetchLivePrice(){
-  const TIMEOUT_MS = 2500;
-  const sources = [...LIVE_SOURCES];
-  async function get(url){
+/* ---------------- السعر الحي (مصدر أساسي ثم احتياطي) ---------------- */
+async function fetchLiveQuote(){
+  const TIMEOUT_MS = 3000;
+  async function get(source){
     const ctl = new AbortController();
     const t = setTimeout(()=>ctl.abort(), TIMEOUT_MS);
     try{
-      const r = await fetch(url + (url.includes('?')?'&':'?') + 't=' + Date.now(), {cache:'no-store',mode:'cors', signal: ctl.signal});
+      const r = await fetch(source.url + (source.url.includes('?')?'&':'?') + 't=' + Date.now(), {cache:'no-store',mode:'cors', signal: ctl.signal});
       if(!r.ok) throw new Error('HTTP '+r.status);
       const ct=(r.headers.get('content-type')||'').toLowerCase();
       if(ct.includes('json')){
         const j=await r.json();
-        if(Array.isArray(j)&&Number.isFinite(j[0])) return +j[0];
-        if(j && Number.isFinite(j.price)) return +j.price;
+        const price=Array.isArray(j)?Number(j[0]):Number(j?.price);
+        if(!Number.isFinite(price)) throw new Error('bad price');
+        const marketTs=parseMarketTime(j?.ts ?? j?.time ?? j?.timestamp);
+        const reportedAge=Number(j?.ageMs);
+        const ageMs=Number.isFinite(reportedAge)?Math.max(0,reportedAge):(marketTs?Math.max(0,Date.now()-marketTs):null);
+        if(ageMs!=null && ageMs>LIVE_MARKET_MAX_MS) throw new Error('stale price');
+        return {
+          price,
+          marketTs,
+          source:String(j?.source||source.label),
+          fallback:source.fallback
+        };
       }
       throw new Error('bad json');
     } finally { clearTimeout(t); }
   }
-  const vals = (await Promise.allSettled(sources.map(get)))
-                .filter(x=>x.status==='fulfilled')
-                .map(x=>x.value)
-                .filter(Number.isFinite);
-  if (vals.length===0) throw new Error('تعذّر جلب السعر الحي');
-  const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
-  const clean = vals.filter(v=>Math.abs(v-avg)/avg < 0.01);
-  const arr = clean.length? clean: vals;
-  arr.sort((a,b)=>a-b);
-  const median = arr[Math.floor(arr.length/2)];
-  return median;
+  const errors=[];
+  for(const source of LIVE_SOURCES){
+    try{return await get(source);}
+    catch(error){errors.push(`${source.label}: ${error?.message||error}`);}
+  }
+  throw new Error(`تعذّر جلب السعر الحي (${errors.join(' | ')})`);
 }
 
 /* ---------------- تنبيهات ---------------- */
@@ -546,12 +580,45 @@ function reprojectWithLive(){
 }
 
 /* ---------------- تحديث حي ---------------- */
-async function refreshLive(){ try{
-  const price=await fetchLivePrice(); const t=Date.now();
-  if(Number.isFinite(window.__livePrice)){ const pct=Math.abs(price-window.__livePrice)/window.__livePrice;
-    if(pct>0.007) { console.warn('Spike filtered',pct); return; } }
-  paintLive(price,t); window.__livePrice=price; window.__liveTimeMs=t; LAST_LIVE={price,timeMs:t}; reprojectWithLive();
-}catch(e){ console.warn('Live error:',e); } }
+let __liveRefreshPending=false, __spikeCandidate=null;
+async function refreshLive(){
+  if(__liveRefreshPending || document.hidden) return;
+  __liveRefreshPending=true;
+  try{
+    const quote=await fetchLiveQuote(), price=quote.price, t=Date.now();
+    if(Number.isFinite(window.__livePrice)){
+      const pct=Math.abs(price-window.__livePrice)/window.__livePrice;
+      if(pct>0.007){
+        const sameCandidate=__spikeCandidate && __spikeCandidate.source===quote.source &&
+          Math.abs(price-__spikeCandidate.price)/Math.max(1,__spikeCandidate.price)<0.001;
+        __spikeCandidate=sameCandidate
+          ? {price,source:quote.source,count:__spikeCandidate.count+1}
+          : {price,source:quote.source,count:1};
+        if(__spikeCandidate.count<2){
+          console.warn('Spike awaiting confirmation',pct,quote.source);
+          return;
+        }
+      }else{
+        __spikeCandidate=null;
+      }
+    }
+    paintLive(price,t);
+    window.__livePrice=price;
+    window.__liveTimeMs=t;
+    window.__marketTimeMs=quote.marketTs||0;
+    window.__liveSource=quote.source;
+    window.__liveFallback=quote.fallback;
+    __spikeCandidate=null;
+    LAST_LIVE={price,timeMs:t,marketTimeMs:quote.marketTs||null,source:quote.source};
+    renderLiveStatus();
+    reprojectWithLive();
+  }catch(e){
+    console.warn('Live error:',e);
+    renderLiveStatus();
+  }finally{
+    __liveRefreshPending=false;
+  }
+}
 
 /* ---------------- Backtest Pro (مع Fallback للريبو/الرابط) ---------------- */
 function makeHiDPICanvas(c){const dpr=Math.max(1,Math.min(window.devicePixelRatio||1,3)), r=c.getBoundingClientRect(); c.width=Math.round(r.width*dpr); c.height=Math.round(r.height*dpr); const ctx=c.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); return ctx;}
@@ -727,6 +794,13 @@ setActiveTF(5);
 runAnalysis();
 refreshLive();
 setInterval(refreshLive, LIVE_REFRESH_SEC*1000);
+setInterval(renderLiveStatus, 1000);
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshLive(); });
+elAlertEnable?.addEventListener('change',async()=>{
+  if(elAlertEnable.checked && 'Notification' in window && Notification.permission==='default'){
+    try{await Notification.requestPermission();}catch(_){}
+  }
+});
 
 /* === PATCH: Enable 'Download merged CSV' button and ensure data is available === */
 (function(){
@@ -1648,80 +1722,6 @@ function downloadMergedCsv(){
   syncUIFromFlags();
 })();
 /* ================== END INDICATORS PATCH ================== */
-
-
-
-/* ===== GoldSignals → Worker bridge (add‑only, safe) ===== */
-(function () {
-  const WORKER_URL = "https://workerjs.samer-mourtada.workers.dev/alert";
-
-  let __lastSent = null;
-
-  function parseSide(t) {
-    if (!t) return null;
-    if (/شراء/.test(t)) return "BUY";
-    if (/بيع/.test(t)) return "SELL";
-    return null;
-  }
-  function parseEntry(t) {
-    const m = /سعر الدخول:\s*([\d.]+)/.exec(t || "");
-    return m ? parseFloat(m[1]) : null;
-  }
-  function tfShort() {
-    try {
-      const tf = (typeof currentTF !== "undefined" ? currentTF : 5);
-      if (tf === 1440) return "1d";
-      return tf + "m";
-    } catch { return "5m"; }
-  }
-  async function send(side, entry) {
-    try {
-      const payload = {
-        side,
-        tf: tfShort(),
-        price: (Number.isFinite(entry) ? entry : (typeof __livePrice !== "undefined" ? __livePrice : null)),
-        filtersRejected: false
-      };
-      await fetch(WORKER_URL, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-    } catch (e) {
-      console.warn("[bridge] send failed:", e);
-    }
-  }
-
-  // Public API: يمكنك مناداته يدوياً أو ندائه تلقائياً عبر الـObserver أدناه
-  window.gsNotifyIfRealSignal = function (text) {
-    try {
-      const t = (text || (typeof elAdviceText !== "undefined" && elAdviceText && elAdviceText.textContent) || "").trim();
-      if (!t) return;
-      // تجاهل الحالات غير الحقيقية
-      if (/لا توجد نصيحة/.test(t) || /مرفوض/.test(t) || /حيادي/.test(t)) return;
-
-      const side = parseSide(t);
-      if (!side) return;
-      const entry = parseEntry(t);
-      const id = `${side}|${tfShort()}|${Number.isFinite(entry) ? entry : "n/a"}`;
-
-      if (__lastSent === id) return; // لا تكرر نفس التنبيه
-      __lastSent = id;
-      send(side, entry);
-    } catch (e) {
-      console.warn("[bridge] parse failed:", e);
-    }
-  };
-
-  // مراقبة تلقائية لنص النصيحة (بدون تغيير أي كود موجود)
-  try {
-    const target = (typeof elAdviceText !== "undefined" && elAdviceText) || document.getElementById("adviceText");
-    if (target && typeof MutationObserver !== "undefined") {
-      const mo = new MutationObserver(() => window.gsNotifyIfRealSignal());
-      mo.observe(target, { childList: true, subtree: true });
-    }
-  } catch {}
-})();
 
 
 

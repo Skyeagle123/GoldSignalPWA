@@ -15,8 +15,7 @@ async function notifyLocalAfterSuccess(title, body, url) {
     const reg = await navigator.serviceWorker.ready;
     await reg.showNotification(title || 'GoldSignals', {
       body: body || '',
-      icon: '/icons/icon-192.png',
-      badge: '/icons/badge.png',
+      icon: './icon.svg',
       data: { url: url || (location.origin + location.pathname) }
     });
   } catch {}
@@ -24,7 +23,8 @@ async function notifyLocalAfterSuccess(title, body, url) {
 // --- end additions ---
 
 (function(){
-  const WORKER_URL = "https://workerjs.samer-mourtada.workers.dev/alert";
+  const NOTIFY_URL = "https://goldsignalsx-worker.samer-mourtada.workers.dev/notify";
+  const LEGACY_ALERT_URL = "https://workerjs.samer-mourtada.workers.dev/alert";
 
   // ---------- Helpers ----------
   function toNum(v){
@@ -147,11 +147,25 @@ async function notifyLocalAfterSuccess(title, body, url) {
       if (!Number.isFinite(payload.tp2)   && Number.isFinite(P.tp2))   payload.tp2   = P.tp2;
       if (!Number.isFinite(payload.sl)    && Number.isFinite(P.sl))    payload.sl    = P.sl;
 
-      const r = await fetch(WORKER_URL, {
+      const text = [
+        `GoldSignals ${payload.side || ''} • ${payload.tf || ''}`,
+        `Entry: ${payload.entry ?? '—'}`,
+        `TP1: ${payload.tp1 ?? '—'} • TP2: ${payload.tp2 ?? '—'}`,
+        `SL: ${payload.sl ?? '—'}`
+      ].join('\n');
+
+      let r = await fetch(NOTIFY_URL, {
         method:'POST', headers:{'content-type':'application/json'},
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ text })
       });
-      const resp = await r.json().catch(()=>({}));
+      let resp = await r.json().catch(()=>({}));
+      if (!r.ok || !resp?.ok) {
+        r = await fetch(LEGACY_ALERT_URL, {
+          method:'POST', headers:{'content-type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+        resp = await r.json().catch(()=>({}));
+      }
       console.log('[GS] sent:', payload, '| worker:', resp);
       return resp;
     }catch(err){
@@ -166,6 +180,10 @@ async function notifyLocalAfterSuccess(title, body, url) {
     if (!btn) return;
     btn.style.display = 'inline-block';
     btn.addEventListener('click', async () => {
+      if (window.__marketDataFresh === false) {
+        alert('السعر متأخر أو منقطع. تم منع إرسال التنبيه حفاظاً على السلامة.');
+        return;
+      }
       const side = detectSideFromAdvice();
       if (!side){ alert('لا يوجد اتجاه واضح (شراء/بيع) في النصيحة.'); return; }
 
@@ -185,7 +203,7 @@ async function notifyLocalAfterSuccess(title, body, url) {
 
   async function maybeAutoSend(){
     const { side, previewOnly } = detectSideFromAdviceText();
-    if (!side || previewOnly) return;
+    if (!side || previewOnly || window.__marketDataFresh === false) return;
 
     const tf = tfFromDom();
     const tfMs = tfToMs(tf); if (!tfMs) return;

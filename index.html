@@ -6,6 +6,10 @@
 <meta content="width=device-width,initial-scale=1" name="viewport"/>
 <title>إشارات الذهب • GoldSignals</title>
 <meta content="dark" name="color-scheme"/>
+<meta content="#0ea5e9" name="theme-color"/>
+<meta content="yes" name="mobile-web-app-capable"/>
+<link href="./manifest.json" rel="manifest"/>
+<link href="./icon.svg" rel="icon" type="image/svg+xml"/>
 <style>
     /* ثابت: عمودان جنب بعض حتى على الشاشات الصغيرة */
     .grid-two-fixed{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -133,6 +137,7 @@
 <div class="muted">السعر الحي</div>
 <div class="kpi" id="livePrice">—</div>
 <div class="hint" id="liveTime">—</div>
+<div class="hint" id="liveStatus">المصدر: — • الحالة: جارٍ الاتصال</div>
 </div>
 <div>
 <div class="muted">الملخّص:</div>
@@ -309,22 +314,14 @@
 <button id="btnExportCsv">💾 تنزيل CSV المدموج</button>
 <input accept=".csv" id="hiddenCsvFile" style="display:none" type="file"/>
 </div>
-<script src="app.js?v=final4"></script>
-<script src="mobile-debug.js?v=3"></script>
-<script src="indicators-bridge-plus.js?v=5.3"></script>
-<script src="gs-btns-bridge.js?v=3"></script>
-<script src="gs-worker-bridge.js?v=9"></script>
-<script src="gs-market-metrics.js?v=final4"></script>  
-<script src="gs-modes-patch.js?v=3"></script>  
-<script>
-  (function(){
-    try{
-      if ('serviceWorker' in navigator) {  }
-      if ('Notification' in window && Notification.permission === 'default') { Notification.requestPermission(); }
-    }catch(e){ /* no-op */ }
-  })();
-</script>
-<script src="gs-state-diagnostics.js?v=3"></script> 
+<script src="app.js?v=13"></script>
+<script src="mobile-debug.js?v=13"></script>
+<script src="indicators-bridge-plus.js?v=13"></script>
+<script src="gs-btns-bridge.js?v=13"></script>
+<script src="gs-worker-bridge.js?v=13"></script>
+<script src="gs-market-metrics.js?v=13"></script>
+<script src="gs-modes-patch.js?v=13"></script>
+<script src="gs-state-diagnostics.js?v=13"></script>
 
 <script>
 if ('serviceWorker' in navigator) {
