@@ -39,7 +39,7 @@ const elAlertEnable=$('alertEnable'), elAlertDist=$('alertDistance');
 const elToggleNyHours=$('toggleNyHours'), elTogglePivotFilter=$('togglePivotFilter');
 
 /* عناصر Backtest */
-const elBtCsv=$('btCsv'), elBtTf=$('btTf'), elBtStrict=$('btStrict'), elBtWalk=$('btWalk');
+const elBtCsv=$('btCsv'), elBtTf=$('btTf');
 const elBtRun=$('btRun'), elBtStats=$('btStats'), elBtRows=$('btRows'), elBtEquity=$('btEquity');
 const elBtDailyRiskCap=$('btDailyRiskCap');
 
@@ -684,136 +684,49 @@ function drawEquity(canvas, eq){
   if(!canvas||!eq?.length) return; const ctx=makeHiDPICanvas(canvas), W=canvas.clientWidth, H=canvas.clientHeight;
   ctx.fillStyle='#0b1220'; ctx.fillRect(0,0,W,H);
   const min=Math.min(...eq), max=Math.max(...eq), x0=32,x1=W-8,y0=10,y1=H-18, w=x1-x0,h=y1-y0;
-  const xAt=i=>x0+(i/(eq.length-1))*w, yAt=v=>y1-((v-min)/(max-min||1))*h;
+  const xAt=i=>eq.length===1?x0:x0+(i/(eq.length-1))*w, yAt=v=>y1-((v-min)/(max-min||1))*h;
   ctx.strokeStyle='#334155'; ctx.lineWidth=1; for(let g=0;g<=4;g++){const y=yAt(min+(g/4)*(max-min||1));
     ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(x1,y); ctx.stroke(); }
   ctx.strokeStyle='#10b981'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(xAt(0),yAt(eq[0]));
   for(let i=1;i<eq.length;i++) ctx.lineTo(xAt(i),yAt(eq[i])); ctx.stroke();
 }
-function simulateTrades(series, tf, strictFilters, dailyRiskCapPct, pivotsNY){
-  const rsiArr=rsi(series,RSI_PER), mac=macd(series,EMA_FAST,EMA_SLOW,9), atrArr=atr(series,ATR_PERIOD);
-  const rows5=series, rows30=null, rows60=null;
-  const trades=[], equity=[0]; let curEq=0;
-  let usedRiskToday=0, curNYDay=null;
-
-  for(let i=Math.max(EMA_SLOW,RSI_PER,ATR_PERIOD)+1;i<series.length;i++){
-    const ctx=rsiMacdContext(series,rsiArr,mac,i);
-    let side=classifyFinal(ctx);
-    if(strictFilters){
-      const piv=pivotsNY;
-      side=filteredSignal(tf,series.slice(0,i+1),rsiArr.slice(0,i+1),{...mac,emaF:mac.emaF.slice(0,i+1),emaS:mac.emaS.slice(0,i+1),macd:mac.macd.slice(0,i+1),signal:mac.signal.slice(0,i+1)},atrArr.slice(0,i+1),rows5.slice(0,i+1),rows30,rows60,piv,null,null);
-    }
-    if(side==='حيادي') {equity.push(curEq); continue;}
-
-    const dayKey=nyDateKey(series[i].ts);
-    if(curNYDay!==dayKey){curNYDay=dayKey; usedRiskToday=0;}
-    const price=series[i].close, aNow=atrArr[i]??0.5;
-    const entry=(side==='شراء')?Math.max(price,mac.emaS[i]??price):Math.min(price,mac.emaS[i]??price);
-    const sl=(side==='شراء')?entry-SL_ATR_MULT*aNow:entry+SL_ATR_MULT*aNow;
-    const tp1=(side==='شراء')?entry+TP1_ATR_MULT*aNow:entry-TP1_ATR_MULT*aNow;
-    const tp2=(side==='شراء')?entry+TP2_ATR_MULT*aNow:entry-TP2_ATR_MULT*aNow;
-    const risk=ACCT_SIZE*(RISK_PCT/100); if(usedRiskToday + (risk/ACCT_SIZE*100) > (dailyRiskCapPct||999)) {equity.push(curEq); continue;}
-    usedRiskToday += (risk/ACCT_SIZE*100);
-
-    let exit=entry, R=0, pl=0; let hit1=false;
-    const maxBars=(tf===1440)?20:60;
-    for(let j=i+1;j<Math.min(series.length,i+1+maxBars);j++){
-      const h=series[j].high,l=series[j].low;
-      if(side==='شراء'){
-        if(!hit1 && h>=tp1){hit1=true; R+=TP1_ATR_MULT/SL_ATR_MULT/2; }
-        if(h>=tp2){ R+=TP2_ATR_MULT/SL_ATR_MULT/2; exit=tp2; break; }
-        if(l<=sl){ R-=1; exit=sl; break; }
-      }else{
-        if(!hit1 && l<=tp1){hit1=true; R+=TP1_ATR_MULT/SL_ATR_MULT/2; }
-        if(l<=tp2){ R+=TP2_ATR_MULT/SL_ATR_MULT/2; exit=tp2; break; }
-        if(h>=sl){ R-=1; exit=sl; break; }
-      }
-      exit=series[j].close;
-    }
-    pl = R * (risk);
-    curEq += pl;
-    equity.push(curEq);
-    trades.push({ts:series[i].ts, side, entry, exit, R, pl});
-  }
-  return {trades, equity};
-}
-function summarizeTrades(trades){
-  const n=trades.length||1;
-  const wins=trades.filter(t=>t.R>0), losses=trades.filter(t=>t.R<=0);
-  const winRate = wins.length/n*100;
-  const avgR = trades.reduce((a,b)=>a+b.R,0)/n;
-  const pf = (wins.reduce((a,b)=>a+b.R,0) / Math.max(1e-6, -losses.reduce((a,b)=>a+Math.min(0,b.R),0)));
-  let peak=0, dd=0, run=0; for(const t of trades){ run += t.pl; peak=Math.max(peak,run); dd=Math.max(dd, peak-run); }
-  const meanR=avgR, sdR=Math.sqrt((trades.reduce((a,b)=>a+(b.R-meanR)*(b.R-meanR),0)/n)||1e-6), sharpe=(meanR/sdR)*Math.sqrt(252);
-  const pnl = trades.reduce((a,b)=>a+b.pl,0);
-  return {n, winRate, avgR, pf, dd, pnl, sharpe};
-}
-
-/* === Backtest مع Fallback على ملف الريبو أو رابط الحقل العلوي === */
+/* === Backtest الرسمي: الواجهة تنقل البيانات فقط ولا تتخذ قرار الإشارة === */
 async function runBacktest(){
+  const oldText=elBtRun?.textContent;
   try{
-    loadSettings();
-    const strict=!!elBtStrict?.checked, walk=!!elBtWalk?.checked, tf=parseInt(elBtTf?.value||'5',10);
-    const dailyRiskCap = parseFloat(elBtDailyRiskCap?.value||'3');
+    const client=window.GSXBacktestClient;
+    if(!client) throw new Error('عميل Backtest الرسمي غير محمّل');
+    const tf=client.normalizeTimeframe(elBtTf?.value||'5m');
+    if(elBtRun){elBtRun.disabled=true;elBtRun.textContent='جارٍ التشغيل…';}
 
-    let text;
+    let frames,source='بيانات Worker الرسمية';
     if (elBtCsv?.files?.length) {
-      text = await elBtCsv.files[0].text();
+      frames=client.framesFromFiveMinuteRows(parseCsv(await elBtCsv.files[0].text()),tf);
+      source='CSV مرفوع (قرارات السيرفر)';
     } else {
       const urlFromTop = elCsvInput?.value?.trim();
       if (urlFromTop) {
         const r = await fetch(urlFromTop, {cache:'no-store'});
         if (!r.ok) throw new Error('تعذّر تحميل CSV من الرابط');
-        text = await r.text();
+        frames=client.framesFromFiveMinuteRows(parseCsv(await r.text()),tf);
+        source='CSV رابط (قرارات السيرفر)';
       } else {
-        const r = await fetch(DEFAULT_5M_CSV + '?t=' + Date.now(), {cache:'no-store'});
-        if (!r.ok) throw new Error('تعذّر تحميل CSV الافتراضي من الريبو');
-        text = await r.text();
+        frames=await client.fetchOfficialFrames(fetch,tf);
       }
     }
-    const rows5 = parseCsv(text);
-    if(!rows5.length) throw new Error('CSV فارغ');
-
-    const rows30=aggregateOHLC(rows5,30), rows60=aggregateOHLC(rows5,60), rowsDayNY=aggregateDailyNY(rows5);
-    const piv=calcPivotsFromDailyNY(rowsDayNY);
-    const base=(tf===30)?rows30:(tf===60)?rows60:(tf===1440)?rowsDayNY:rows5;
-
-    let trades=[], equity=[], stats=null;
-    if(!walk){
-      const sim=simulateTrades(base, tf, strict, dailyRiskCap, piv);
-      trades=sim.trades; equity=sim.equity; stats=summarizeTrades(trades);
-    }else{
-      const K=3, foldSize=Math.floor(base.length/K);
-      let allTrades=[], eq=[0];
-      for(let k=0;k<K;k++){
-        const train=base.slice(Math.max(0,k*foldSize-200), (k+1)*foldSize);
-        const test =base.slice((k+1)*foldSize, Math.min(base.length,(k+2)*foldSize));
-        if(train.length<200||test.length<200) continue;
-
-        const keepMin=ATR_MIN_PCT, keepMax=ATR_MAX_PCT;
-        let best={score:-Infinity, mn:keepMin, mx:keepMax};
-        const grid=[-0.02,0,0.02].flatMap(d1=>[-0.1,0,0.1].map(d2=>({mn:Math.max(0.01,keepMin+d1), mx:Math.min(1.2,keepMax+d2)})));
-        for(const g of grid){
-          ATR_MIN_PCT=g.mn; ATR_MAX_PCT=g.mx;
-          const tr=summarizeTrades(simulateTrades(train, tf, strict, dailyRiskCap, piv).trades);
-          const score = tr.winRate*0.6 + tr.pf*30 + tr.avgR*20;
-          if(score>best.score) best={score, mn:g.mn, mx:g.mx};
-        }
-        ATR_MIN_PCT=best.mn; ATR_MAX_PCT=best.mx;
-        const sim=simulateTrades(test, tf, strict, dailyRiskCap, piv);
-        allTrades=allTrades.concat(sim.trades);
-        eq=eq.concat(sim.equity.map(v=>v+eq[eq.length-1]).slice(1));
-        ATR_MIN_PCT=keepMin; ATR_MAX_PCT=keepMax;
-      }
-      trades=allTrades; equity=eq; stats=summarizeTrades(trades);
-      loadSettings();
-    }
+    const payload=await client.runOfficialBacktest({fetchImpl:fetch,timeframe:tf,frames,endAt:Date.now()});
+    const displayRisk=Math.max(0,parseFloat(elBtDailyRiskCap?.value||'1'));
+    const accountSize=Math.max(0,parseFloat(elAcctSize?.value||'10000'));
+    const trades=client.presentationTrades(payload,accountSize,displayRisk);
+    const stats=client.summarizePresentation(trades);
+    const equity=[0];for(const trade of trades)equity.push(equity.at(-1)+trade.pl);
 
     if(elBtStats){
+      const pf=Number.isFinite(stats.pf)?nf2.format(stats.pf):'∞';
       elBtStats.innerHTML =
-        `الصفقات: <b>${stats.n}</b> • Win%: <b>${nf2.format(stats.winRate)}</b> • PF: <b>${nf2.format(stats.pf)}</b> • `+
+        `المصدر: <b>computeServerSignal</b> • ${source} • الصفقات: <b>${stats.n}</b> • Win%: <b>${nf2.format(stats.winRate)}</b> • PF: <b>${pf}</b> • `+
         `Expectancy (R): <b>${nf2.format(stats.avgR)}</b> • MaxDD$: <b>${nf2.format(stats.dd)}</b> • PnL$: <b>${nf2.format(stats.pnl)}</b> • `+
-        `Sharpe≈ <b>${nf2.format(stats.sharpe)}</b>`;
+        `Filters: <b>${payload.settingsSource}</b>`;
     }
     if(elBtRows){
       elBtRows.innerHTML='';
@@ -826,6 +739,7 @@ async function runBacktest(){
     }
     drawEquity(elBtEquity, equity);
   }catch(e){ alert(`Backtest فشل: ${e.message||e}`); console.error(e); }
+  finally{if(elBtRun){elBtRun.disabled=false;elBtRun.textContent=oldText||'تشغيل الاختبار';}}
 }
 
 /* ---------------- أحداث ---------------- */

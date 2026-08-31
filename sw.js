@@ -1,4 +1,4 @@
-const CACHE_NAME = 'goldsSignals-shell-v14';
+const CACHE_NAME = 'goldsSignals-shell-v15';
 const CORE_ASSETS = [
   './',
   './index.html',
