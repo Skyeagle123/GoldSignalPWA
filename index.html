@@ -280,19 +280,21 @@
 <div>
 <label>الإطار الأساسي:</label>
 <select id="btTf">
-<option value="5">5 دقائق</option>
-<option value="30">30 دقيقة</option>
-<option value="60">ساعة</option>
-<option value="1440">يوم (NY)</option>
+<option value="1m">1 دقيقة</option>
+<option selected value="5m">5 دقائق</option>
+<option value="15m">15 دقيقة</option>
+<option value="30m">30 دقيقة</option>
+<option value="60m">ساعة</option>
+<option value="240m">4 ساعات</option>
+<option value="1d">يوم</option>
 </select>
 </div>
 <div>
-<label class="muted"><input checked="" id="btStrict" type="checkbox"/> Strict Filters</label>
-<label class="muted"><input checked="" id="btWalk" type="checkbox"/> Walk-Forward (3-Fold)</label>
+<div class="muted">القرار ثابت من محرك السيرفر الرسمي. سريع/حذر/ذكي وStrict/Walk-forward لا تغيّره.</div>
 </div>
 <div>
-<label>حد أقصى مخاطرة يومية %</label>
-<input id="btDailyRiskCap" step="0.1" type="number" value="3.0"/>
+<label>مخاطرة افتراضية للعرض %</label>
+<input id="btDailyRiskCap" step="0.1" type="number" value="1.0"/>
 </div>
 <div style="display:flex;align-items:flex-end">
 <button class="pill" id="btRun">تشغيل الاختبار</button>
@@ -315,7 +317,8 @@
 <button id="btnExportCsv">💾 تنزيل CSV المدموج</button>
 <input accept=".csv" id="hiddenCsvFile" style="display:none" type="file"/>
 </div>
-<script src="app.js?v=14"></script>
+<script src="gs-backtest-client.js?v=15"></script>
+<script src="app.js?v=15"></script>
 <script src="mobile-debug.js?v=14"></script>
 <script src="indicators-bridge-plus.js?v=14"></script>
 <script src="gs-btns-bridge.js?v=14"></script>
