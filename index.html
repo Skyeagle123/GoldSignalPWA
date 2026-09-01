@@ -170,6 +170,20 @@
 <button class="pill" id="sendAlertBtn" style="margin-top:8px">إرسال تنبيه تلغرام يدويًا</button>
 </div>
 <!-- الدعم والمقاومة تحت النصيحة -->
+<div class="card" id="newsCalendarCard">
+<h3>الأخبار والرزنامة الاقتصادية</h3>
+<div id="newsRiskBanner" style="font-weight:700;margin-bottom:8px">جارٍ تحميل نافذة المخاطر…</div>
+<div class="hint">قرار المخاطر يصدر من Worker فقط. الأخبار للسياق وليست إشارات تداول.</div>
+<h4>الأحداث الأهم</h4>
+<div style="overflow:auto">
+<table><thead><tr><th>الحدث</th><th>الوقت المحلي</th><th>العدّاد</th><th>Impact</th><th>Actual</th><th>Forecast</th><th>Previous</th></tr></thead>
+<tbody id="calendarRows"><tr><td colspan="7" class="muted">جارٍ التحميل…</td></tr></tbody></table>
+</div>
+<h4>سياق الأخبار</h4>
+<div id="newsContextList" class="muted">جارٍ التحميل…</div>
+<div class="hint" id="newsCalendarStatus" style="margin-top:8px">—</div>
+</div>
+<!-- الدعم والمقاومة تحت النصيحة -->
 <div class="card">
 <h3>الدعم والمقاومة (Pivot) • على يوم نيويورك</h3>
 <div class="pivot-grid">
@@ -317,8 +331,9 @@
 <button id="btnExportCsv">💾 تنزيل CSV المدموج</button>
 <input accept=".csv" id="hiddenCsvFile" style="display:none" type="file"/>
 </div>
-<script src="gs-backtest-client.js?v=15"></script>
-<script src="app.js?v=15"></script>
+<script src="gs-backtest-client.js?v=16"></script>
+<script src="app.js?v=16"></script>
+<script src="gs-news-calendar.js?v=16"></script>
 <script src="mobile-debug.js?v=14"></script>
 <script src="indicators-bridge-plus.js?v=14"></script>
 <script src="gs-btns-bridge.js?v=14"></script>
